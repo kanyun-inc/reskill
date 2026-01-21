@@ -40,6 +40,14 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kanyun-ai-infra/skmp.git"
+  },
+  "homepage": "https://github.com/kanyun-ai-infra/skmp#readme",
+  "bugs": {
+    "url": "https://github.com/kanyun-ai-infra/skmp/issues"
+  },
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
