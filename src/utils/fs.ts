@@ -203,8 +203,94 @@ export function getHomeDir(): string {
 
 /**
  * Get global skills installation directory (~/.claude/skills)
+ * @deprecated Use getAgentGlobalSkillsDir from agent-registry instead
  */
 export function getGlobalSkillsDir(): string {
   const home = getHomeDir();
   return path.join(home, '.claude', 'skills');
+}
+
+// ============================================================================
+// Multi-Agent 路径工具
+// ============================================================================
+
+/**
+ * 规范 skills 目录名称
+ */
+const AGENTS_DIR = '.agents';
+const SKILLS_SUBDIR = 'skills';
+
+/**
+ * 获取规范 skills 目录路径
+ *
+ * 规范位置: .agents/skills/ (项目级) 或 ~/.agents/skills/ (全局)
+ * 这是 skill 源文件的存储位置，各 agent 目录通过符号链接指向这里
+ */
+export function getCanonicalSkillsDir(
+  options: { global?: boolean; cwd?: string } = {}
+): string {
+  const { global: isGlobal = false, cwd } = options;
+  const baseDir = isGlobal ? getHomeDir() : cwd || process.cwd();
+  return path.join(baseDir, AGENTS_DIR, SKILLS_SUBDIR);
+}
+
+/**
+ * 获取规范 skill 路径
+ */
+export function getCanonicalSkillPath(
+  skillName: string,
+  options: { global?: boolean; cwd?: string } = {}
+): string {
+  return path.join(getCanonicalSkillsDir(options), skillName);
+}
+
+/**
+ * 缩短路径显示 (将 home 目录替换为 ~)
+ */
+export function shortenPath(fullPath: string, cwd?: string): string {
+  const home = getHomeDir();
+  const currentDir = cwd || process.cwd();
+
+  if (fullPath.startsWith(home)) {
+    return fullPath.replace(home, '~');
+  }
+  if (fullPath.startsWith(currentDir)) {
+    return '.' + fullPath.slice(currentDir.length);
+  }
+  return fullPath;
+}
+
+/**
+ * 验证路径安全性 (防止路径遍历攻击)
+ */
+export function isPathSafe(basePath: string, targetPath: string): boolean {
+  const normalizedBase = path.normalize(path.resolve(basePath));
+  const normalizedTarget = path.normalize(path.resolve(targetPath));
+
+  return (
+    normalizedTarget.startsWith(normalizedBase + path.sep) ||
+    normalizedTarget === normalizedBase
+  );
+}
+
+/**
+ * 清理文件名 (防止路径遍历攻击)
+ */
+export function sanitizeName(name: string): string {
+  // 移除路径分隔符和特殊字符
+  let sanitized = name.replace(/[/\\:\0]/g, '');
+  // 移除开头和结尾的点和空格
+  sanitized = sanitized.replace(/^[.\s]+|[.\s]+$/g, '');
+  // 移除开头的点
+  sanitized = sanitized.replace(/^\.+/, '');
+
+  if (!sanitized || sanitized.length === 0) {
+    sanitized = 'unnamed-skill';
+  }
+
+  if (sanitized.length > 255) {
+    sanitized = sanitized.substring(0, 255);
+  }
+
+  return sanitized;
 }

@@ -123,6 +123,8 @@ export class ConfigLoader {
     return {
       registry: config.defaults?.registry || DEFAULT_SKILLS_JSON.defaults!.registry!,
       installDir: config.defaults?.installDir || DEFAULT_SKILLS_JSON.defaults!.installDir!,
+      targetAgents: config.defaults?.targetAgents || [],
+      installMode: config.defaults?.installMode || 'symlink',
     };
   }
 

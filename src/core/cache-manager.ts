@@ -67,6 +67,13 @@ export class CacheManager {
   }
 
   /**
+   * 获取缓存路径 (getSkillCachePath 的别名)
+   */
+  getCachePath(parsed: ParsedSkillRef, version: string): string {
+    return this.getSkillCachePath(parsed, version);
+  }
+
+  /**
    * 检查 skill 是否已缓存
    */
   isCached(parsed: ParsedSkillRef, version: string): boolean {

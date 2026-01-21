@@ -291,6 +291,58 @@ describe('GitResolver', () => {
       });
     });
   });
+
+  describe('constructor', () => {
+    it('should use github as default registry', () => {
+      const resolver = new GitResolver();
+      const parsed = resolver.parseRef('user/repo');
+      expect(parsed.registry).toBe('github');
+    });
+
+    it('should use custom default registry', () => {
+      const resolver = new GitResolver('gitlab');
+      const parsed = resolver.parseRef('user/repo');
+      expect(parsed.registry).toBe('gitlab');
+    });
+  });
+
+  describe('parseRef edge cases', () => {
+    it('should handle repo name with dots', () => {
+      const result = resolver.parseRef('user/my.skill.name@v1.0.0');
+      expect(result.repo).toBe('my.skill.name');
+    });
+
+    it('should handle org with hyphens', () => {
+      const result = resolver.parseRef('my-org/my-skill@v1.0.0');
+      expect(result.owner).toBe('my-org');
+      expect(result.repo).toBe('my-skill');
+    });
+
+    it('should handle numeric version', () => {
+      const result = resolver.parseRef('user/skill@1.0.0');
+      expect(result.version).toBe('1.0.0');
+    });
+  });
+
+  describe('parseVersion edge cases', () => {
+    it('should parse version with prerelease', () => {
+      const result = resolver.parseVersion('v1.0.0-beta.1');
+      expect(result.type).toBe('exact');
+      expect(result.value).toBe('v1.0.0-beta.1');
+    });
+
+    it('should parse version with build metadata', () => {
+      const result = resolver.parseVersion('v1.0.0+build123');
+      expect(result.type).toBe('exact');
+      expect(result.value).toBe('v1.0.0+build123');
+    });
+
+    it('should treat empty string as default branch', () => {
+      const result = resolver.parseVersion('');
+      expect(result.type).toBe('branch');
+      expect(result.value).toBe('main');
+    });
+  });
 });
 
 // Integration tests (require network)

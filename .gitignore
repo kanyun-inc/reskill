@@ -32,3 +32,21 @@ npm-debug.log*
 # Lock files (keep package-lock if using npm)
 # pnpm-lock.yaml
 # yarn.lock
+
+# Agent skills directories (created during install)
+.agents/
+.cursor/
+.claude/
+.windsurf/
+.copilot/
+.github/skills/
+.goose/
+.codex/
+.roo/
+.trae/
+.kiro/
+.kilocode/
+.neovate/
+.factory/
+.gemini/
+.clawdbot/

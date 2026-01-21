@@ -4,6 +4,31 @@
  */
 
 // ============================================================================
+// Multi-Agent 相关类型
+// ============================================================================
+
+/**
+ * 支持的 Agent 类型
+ */
+export type {
+  AgentType,
+  AgentConfig,
+} from '../core/agent-registry.js';
+
+/**
+ * 安装模式
+ */
+export type { InstallMode, InstallResult } from '../core/installer.js';
+
+/**
+ * SKILL.md 解析相关类型 (遵循 agentskills.io 规范)
+ */
+export type {
+  SkillMdFrontmatter,
+  ParsedSkill,
+} from '../core/skill-parser.js';
+
+// ============================================================================
 // skills.json - 项目依赖配置
 // ============================================================================
 
@@ -40,6 +65,10 @@ export interface SkillsDefaults {
   registry?: string;
   /** 安装目录，默认 .skills */
   installDir?: string;
+  /** 目标 agents 列表 */
+  targetAgents?: string[];
+  /** 安装模式: symlink | copy */
+  installMode?: 'symlink' | 'copy';
 }
 
 /**
@@ -235,8 +264,14 @@ export interface InstallOptions {
   force?: boolean;
   /** 保存到 skills.json */
   save?: boolean;
-  /** 全局安装到 ~/.claude/skills */
+  /** 全局安装 */
   global?: boolean;
+  /** 目标 agents 列表 */
+  agents?: string[];
+  /** 安装模式: symlink | copy */
+  mode?: 'symlink' | 'copy';
+  /** 跳过确认 */
+  yes?: boolean;
 }
 
 /**

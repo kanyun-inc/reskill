@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -17,6 +17,26 @@ describe('SkillManager', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
+  describe('constructor', () => {
+    it('should use current directory when no projectRoot provided', () => {
+      const manager = new SkillManager();
+      expect(manager.getProjectRoot()).toBe(process.cwd());
+    });
+
+    it('should use provided projectRoot', () => {
+      expect(skillManager.getProjectRoot()).toBe(tempDir);
+    });
+
+    it('should default to non-global mode', () => {
+      expect(skillManager.isGlobalMode()).toBe(false);
+    });
+
+    it('should accept global option', () => {
+      const globalManager = new SkillManager(tempDir, { global: true });
+      expect(globalManager.isGlobalMode()).toBe(true);
+    });
+  });
+
   describe('getProjectRoot', () => {
     it('should return project root', () => {
       expect(skillManager.getProjectRoot()).toBe(tempDir);
@@ -32,6 +52,20 @@ describe('SkillManager', () => {
       const globalManager = new SkillManager(tempDir, { global: true });
       const home = process.env.HOME || process.env.USERPROFILE || '';
       expect(globalManager.getInstallDir()).toBe(path.join(home, '.claude', 'skills'));
+    });
+
+    it('should use config installDir when available', () => {
+      // Create skills.json with custom installDir
+      fs.writeFileSync(
+        path.join(tempDir, 'skills.json'),
+        JSON.stringify({
+          skills: {},
+          defaults: { installDir: 'custom-skills' },
+        })
+      );
+
+      const manager = new SkillManager(tempDir);
+      expect(manager.getInstallDir()).toBe(path.join(tempDir, 'custom-skills'));
     });
   });
 
@@ -52,6 +86,12 @@ describe('SkillManager', () => {
         path.join(tempDir, '.skills', 'my-skill')
       );
     });
+
+    it('should handle nested skill names', () => {
+      expect(skillManager.getSkillPath('my-org/my-skill')).toBe(
+        path.join(tempDir, '.skills', 'my-org/my-skill')
+      );
+    });
   });
 
   describe('list', () => {
@@ -59,10 +99,14 @@ describe('SkillManager', () => {
       expect(skillManager.list()).toEqual([]);
     });
 
+    it('should return empty array when install dir does not exist', () => {
+      expect(skillManager.list()).toEqual([]);
+    });
+
     it('should return installed skills', () => {
       const skillsDir = path.join(tempDir, '.skills');
       const skillPath = path.join(skillsDir, 'test-skill');
-      
+
       fs.mkdirSync(skillPath, { recursive: true });
       fs.writeFileSync(
         path.join(skillPath, 'skill.json'),
@@ -72,6 +116,46 @@ describe('SkillManager', () => {
       const skills = skillManager.list();
       expect(skills).toHaveLength(1);
       expect(skills[0].name).toBe('test-skill');
+    });
+
+    it('should return multiple skills', () => {
+      const skillsDir = path.join(tempDir, '.skills');
+
+      // Create skill 1
+      const skill1Path = path.join(skillsDir, 'skill-1');
+      fs.mkdirSync(skill1Path, { recursive: true });
+      fs.writeFileSync(
+        path.join(skill1Path, 'skill.json'),
+        JSON.stringify({ name: 'skill-1', version: '1.0.0' })
+      );
+
+      // Create skill 2
+      const skill2Path = path.join(skillsDir, 'skill-2');
+      fs.mkdirSync(skill2Path, { recursive: true });
+      fs.writeFileSync(
+        path.join(skill2Path, 'skill.json'),
+        JSON.stringify({ name: 'skill-2', version: '2.0.0' })
+      );
+
+      const skills = skillManager.list();
+      expect(skills).toHaveLength(2);
+    });
+
+    it('should ignore files in skills directory', () => {
+      const skillsDir = path.join(tempDir, '.skills');
+      fs.mkdirSync(skillsDir, { recursive: true });
+
+      // Create a file instead of directory
+      fs.writeFileSync(path.join(skillsDir, 'not-a-skill.txt'), 'test');
+
+      // Create actual skill directory
+      const skillPath = path.join(skillsDir, 'real-skill');
+      fs.mkdirSync(skillPath);
+      fs.writeFileSync(path.join(skillPath, 'skill.json'), '{}');
+
+      const skills = skillManager.list();
+      expect(skills).toHaveLength(1);
+      expect(skills[0].name).toBe('real-skill');
     });
   });
 
@@ -83,7 +167,7 @@ describe('SkillManager', () => {
     it('should return skill info for installed skill', () => {
       const skillsDir = path.join(tempDir, '.skills');
       const skillPath = path.join(skillsDir, 'test-skill');
-      
+
       fs.mkdirSync(skillPath, { recursive: true });
       fs.writeFileSync(
         path.join(skillPath, 'skill.json'),
@@ -94,6 +178,47 @@ describe('SkillManager', () => {
       expect(skill).not.toBeNull();
       expect(skill?.name).toBe('test-skill');
       expect(skill?.metadata?.version).toBe('1.0.0');
+    });
+
+    it('should handle skill without skill.json', () => {
+      const skillsDir = path.join(tempDir, '.skills');
+      const skillPath = path.join(skillsDir, 'minimal-skill');
+
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(path.join(skillPath, 'SKILL.md'), '# Skill');
+
+      const skill = skillManager.getInstalledSkill('minimal-skill');
+      expect(skill).not.toBeNull();
+      expect(skill?.name).toBe('minimal-skill');
+      expect(skill?.version).toBe('unknown');
+    });
+
+    it('should handle invalid skill.json gracefully', () => {
+      const skillsDir = path.join(tempDir, '.skills');
+      const skillPath = path.join(skillsDir, 'bad-skill');
+
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(path.join(skillPath, 'skill.json'), 'not valid json');
+
+      const skill = skillManager.getInstalledSkill('bad-skill');
+      expect(skill).not.toBeNull();
+      expect(skill?.name).toBe('bad-skill');
+      expect(skill?.metadata).toBeUndefined();
+    });
+
+    it('should detect linked skill', () => {
+      // Create source directory
+      const sourceDir = path.join(tempDir, 'source-skill');
+      fs.mkdirSync(sourceDir);
+      fs.writeFileSync(path.join(sourceDir, 'SKILL.md'), '# Skill');
+
+      // Link it
+      skillManager.link(sourceDir, 'linked-skill');
+
+      const skill = skillManager.getInstalledSkill('linked-skill');
+      expect(skill).not.toBeNull();
+      expect(skill?.isLinked).toBe(true);
+      expect(skill?.version).toBe('local');
     });
   });
 
@@ -109,7 +234,7 @@ describe('SkillManager', () => {
       fs.writeFileSync(path.join(localSkillDir, 'SKILL.md'), '# My Local Skill');
 
       const linked = skillManager.link(localSkillDir);
-      
+
       expect(linked.name).toBe('my-local-skill');
       expect(linked.isLinked).toBe(true);
       expect(fs.existsSync(skillManager.getSkillPath('my-local-skill'))).toBe(true);
@@ -124,6 +249,29 @@ describe('SkillManager', () => {
       expect(linked.name).toBe('custom-name');
     });
 
+    it('should use directory name if no skill.json', () => {
+      const localSkillDir = path.join(tempDir, 'my-directory');
+      fs.mkdirSync(localSkillDir);
+      fs.writeFileSync(path.join(localSkillDir, 'SKILL.md'), '# Skill');
+
+      const linked = skillManager.link(localSkillDir);
+      expect(linked.name).toBe('my-directory');
+    });
+
+    it('should throw error if path does not exist', () => {
+      expect(() => skillManager.link('/nonexistent/path')).toThrow('does not exist');
+    });
+
+    it('should handle invalid skill.json gracefully', () => {
+      const localSkillDir = path.join(tempDir, 'bad-json-skill');
+      fs.mkdirSync(localSkillDir);
+      fs.writeFileSync(path.join(localSkillDir, 'skill.json'), 'not json');
+      fs.writeFileSync(path.join(localSkillDir, 'SKILL.md'), '# Skill');
+
+      const linked = skillManager.link(localSkillDir);
+      expect(linked.name).toBe('bad-json-skill');
+    });
+
     it('should unlink linked skill', () => {
       const localSkillDir = path.join(tempDir, 'local-skill');
       fs.mkdirSync(localSkillDir);
@@ -131,13 +279,22 @@ describe('SkillManager', () => {
 
       skillManager.link(localSkillDir, 'to-unlink');
       const result = skillManager.unlink('to-unlink');
-      
+
       expect(result).toBe(true);
       expect(fs.existsSync(skillManager.getSkillPath('to-unlink'))).toBe(false);
     });
 
     it('should return false when unlinking non-existent skill', () => {
       expect(skillManager.unlink('non-existent')).toBe(false);
+    });
+
+    it('should return false when unlinking non-linked skill', () => {
+      // Create a real (non-linked) skill
+      const skillPath = path.join(tempDir, '.skills', 'real-skill');
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(path.join(skillPath, 'SKILL.md'), '# Skill');
+
+      expect(skillManager.unlink('real-skill')).toBe(false);
     });
   });
 
@@ -154,13 +311,35 @@ describe('SkillManager', () => {
       );
 
       const result = skillManager.uninstall('test-skill');
-      
+
       expect(result).toBe(true);
       expect(fs.existsSync(skillPath)).toBe(false);
     });
 
     it('should return false for non-installed skill', () => {
       expect(skillManager.uninstall('non-existent')).toBe(false);
+    });
+
+    it('should remove from skills.json', () => {
+      const skillPath = path.join(tempDir, '.skills', 'test-skill');
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(path.join(skillPath, 'skill.json'), '{}');
+
+      fs.writeFileSync(
+        path.join(tempDir, 'skills.json'),
+        JSON.stringify({
+          skills: {
+            'test-skill': 'github:user/test-skill@v1.0.0',
+            'other-skill': 'github:user/other@v1.0.0',
+          },
+        })
+      );
+
+      skillManager.uninstall('test-skill');
+
+      const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.json'), 'utf-8'));
+      expect(config.skills['test-skill']).toBeUndefined();
+      expect(config.skills['other-skill']).toBeDefined();
     });
   });
 
@@ -176,6 +355,148 @@ describe('SkillManager', () => {
       expect(info.config).toBe('github:user/test-skill@v1.0.0');
       expect(info.installed).toBeNull(); // Not installed yet
     });
+
+    it('should return null for unknown skill', () => {
+      const info = skillManager.getInfo('unknown');
+      expect(info.config).toBeUndefined();
+      expect(info.installed).toBeNull();
+      expect(info.locked).toBeUndefined();
+    });
+
+    it('should include installed info', () => {
+      const skillPath = path.join(tempDir, '.skills', 'test-skill');
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(skillPath, 'skill.json'),
+        JSON.stringify({ name: 'test-skill', version: '1.0.0' })
+      );
+
+      const info = skillManager.getInfo('test-skill');
+      expect(info.installed).not.toBeNull();
+      expect(info.installed?.name).toBe('test-skill');
+    });
+
+    it('should include locked info', () => {
+      // Create skills.lock
+      fs.writeFileSync(
+        path.join(tempDir, 'skills.lock'),
+        JSON.stringify({
+          version: 1,
+          skills: {
+            'test-skill': {
+              source: 'github:user/test-skill',
+              version: 'v1.0.0',
+              resolved: 'https://github.com/user/test-skill.git',
+              commit: 'abc123',
+              installedAt: '2024-01-01T00:00:00Z',
+            },
+          },
+        })
+      );
+
+      const info = skillManager.getInfo('test-skill');
+      expect(info.locked).toBeDefined();
+      expect(info.locked?.version).toBe('v1.0.0');
+    });
+  });
+
+  describe('Multi-Agent methods', () => {
+    describe('getAllAgentTypes', () => {
+      it('should return all agent types', () => {
+        const types = skillManager.getAllAgentTypes();
+        expect(Array.isArray(types)).toBe(true);
+        expect(types.length).toBe(17);
+        expect(types).toContain('cursor');
+        expect(types).toContain('claude-code');
+      });
+    });
+
+    describe('validateAgentTypes', () => {
+      it('should validate correct agent types', () => {
+        const result = skillManager.validateAgentTypes(['cursor', 'claude-code']);
+        expect(result.valid).toEqual(['cursor', 'claude-code']);
+        expect(result.invalid).toEqual([]);
+      });
+
+      it('should identify invalid agent types', () => {
+        const result = skillManager.validateAgentTypes(['cursor', 'invalid', 'vscode']);
+        expect(result.valid).toEqual(['cursor']);
+        expect(result.invalid).toEqual(['invalid', 'vscode']);
+      });
+
+      it('should handle empty array', () => {
+        const result = skillManager.validateAgentTypes([]);
+        expect(result.valid).toEqual([]);
+        expect(result.invalid).toEqual([]);
+      });
+    });
+
+    describe('getDefaultInstallMode', () => {
+      it('should return symlink by default', () => {
+        expect(skillManager.getDefaultInstallMode()).toBe('symlink');
+      });
+
+      it('should return config value if set', () => {
+        fs.writeFileSync(
+          path.join(tempDir, 'skills.json'),
+          JSON.stringify({
+            skills: {},
+            defaults: { installMode: 'copy' },
+          })
+        );
+
+        const manager = new SkillManager(tempDir);
+        expect(manager.getDefaultInstallMode()).toBe('copy');
+      });
+    });
+
+    describe('getDefaultTargetAgents', () => {
+      it('should return detected agents by default', async () => {
+        const agents = await skillManager.getDefaultTargetAgents();
+        expect(Array.isArray(agents)).toBe(true);
+      });
+
+      it('should return config value if set', async () => {
+        fs.writeFileSync(
+          path.join(tempDir, 'skills.json'),
+          JSON.stringify({
+            skills: {},
+            defaults: { targetAgents: ['cursor', 'windsurf'] },
+          })
+        );
+
+        const manager = new SkillManager(tempDir);
+        const agents = await manager.getDefaultTargetAgents();
+        expect(agents).toEqual(['cursor', 'windsurf']);
+      });
+
+      it('should filter invalid agents from config', async () => {
+        fs.writeFileSync(
+          path.join(tempDir, 'skills.json'),
+          JSON.stringify({
+            skills: {},
+            defaults: { targetAgents: ['cursor', 'invalid-agent', 'windsurf'] },
+          })
+        );
+
+        const manager = new SkillManager(tempDir);
+        const agents = await manager.getDefaultTargetAgents();
+        expect(agents).toEqual(['cursor', 'windsurf']);
+        expect(agents).not.toContain('invalid-agent');
+      });
+    });
+  });
+
+  describe('installAll', () => {
+    it('should return empty array when no skills in config', async () => {
+      fs.writeFileSync(
+        path.join(tempDir, 'skills.json'),
+        JSON.stringify({ skills: {} })
+      );
+
+      const installed = await skillManager.installAll();
+      expect(installed).toEqual([]);
+    });
   });
 });
 
@@ -186,6 +507,14 @@ describe('SkillManager integration', () => {
   });
 
   it.skip('should update skill', async () => {
+    // This test requires network access
+  });
+
+  it.skip('should check outdated skills', async () => {
+    // This test requires network access
+  });
+
+  it.skip('should install to multiple agents', async () => {
     // This test requires network access
   });
 });

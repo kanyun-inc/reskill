@@ -4,6 +4,13 @@ import { GitResolver } from './git-resolver.js';
 import { CacheManager } from './cache-manager.js';
 import { ConfigLoader } from './config-loader.js';
 import { LockManager } from './lock-manager.js';
+import { Installer, type InstallResult, type InstallMode } from './installer.js';
+import {
+  type AgentType,
+  detectInstalledAgents,
+  isValidAgentType,
+  agents,
+} from './agent-registry.js';
 import {
   exists,
   readJson,
@@ -434,6 +441,184 @@ export class SkillManager {
         });
       }
     }
+
+    return results;
+  }
+
+  // ============================================================================
+  // Multi-Agent 安装方法
+  // ============================================================================
+
+  /**
+   * 安装 skill 到多个 agents
+   *
+   * @param ref - Skill 引用 (如 github:user/repo@v1.0.0)
+   * @param targetAgents - 目标 agents 列表
+   * @param options - 安装选项
+   */
+  async installToAgents(
+    ref: string,
+    targetAgents: AgentType[],
+    options: InstallOptions = {}
+  ): Promise<{
+    skill: InstalledSkill;
+    results: Map<AgentType, InstallResult>;
+  }> {
+    const { save = true, mode = 'symlink' } = options;
+
+    // 解析引用
+    const resolved = await this.resolver.resolve(ref);
+    const { parsed, repoUrl } = resolved;
+    const version = resolved.ref;
+    const skillName = parsed.subPath
+      ? path.basename(parsed.subPath)
+      : parsed.repo;
+
+    logger.package(`Installing ${skillName}@${version} to ${targetAgents.length} agent(s)...`);
+
+    // 检查缓存
+    let cacheResult = await this.cache.get(parsed, version);
+
+    if (!cacheResult) {
+      logger.debug(`Caching ${skillName}@${version} from ${repoUrl}`);
+      cacheResult = await this.cache.cache(repoUrl, parsed, version, version);
+    } else {
+      logger.debug(`Using cached ${skillName}@${version}`);
+    }
+
+    // 获取缓存路径作为源
+    const sourcePath = this.cache.getCachePath(parsed, version);
+
+    // 创建 Installer
+    const installer = new Installer({
+      cwd: this.projectRoot,
+      global: this.isGlobal,
+    });
+
+    // 安装到所有目标 agents
+    const results = await installer.installToAgents(
+      sourcePath,
+      skillName,
+      targetAgents,
+      { mode: mode as InstallMode }
+    );
+
+    // 更新 lock 文件 (仅项目模式)
+    if (!this.isGlobal) {
+      this.lockManager.lockSkill(skillName, {
+        source: `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? '/' + parsed.subPath : ''}`,
+        version,
+        resolved: repoUrl,
+        commit: cacheResult.commit,
+      });
+    }
+
+    // 更新 skills.json (仅项目模式)
+    if (!this.isGlobal && save && this.config.exists()) {
+      this.config.addSkill(skillName, ref);
+    }
+
+    // 统计结果
+    const successCount = Array.from(results.values()).filter((r) => r.success).length;
+    const failCount = results.size - successCount;
+
+    if (failCount === 0) {
+      logger.success(`Installed ${skillName}@${version} to ${successCount} agent(s)`);
+    } else {
+      logger.warn(
+        `Installed ${skillName}@${version} to ${successCount} agent(s), ${failCount} failed`
+      );
+    }
+
+    // 构建返回的 InstalledSkill
+    const skill: InstalledSkill = {
+      name: skillName,
+      path: sourcePath,
+      version,
+      source: `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? '/' + parsed.subPath : ''}`,
+    };
+
+    return { skill, results };
+  }
+
+  /**
+   * 获取默认的目标 agents
+   *
+   * 优先级:
+   * 1. skills.json 中的 defaults.targetAgents
+   * 2. 自动检测已安装的 agents
+   * 3. 返回空数组
+   */
+  async getDefaultTargetAgents(): Promise<AgentType[]> {
+    // 从配置读取
+    const defaults = this.config.getDefaults();
+    if (defaults.targetAgents && defaults.targetAgents.length > 0) {
+      return defaults.targetAgents.filter(isValidAgentType) as AgentType[];
+    }
+
+    // 自动检测
+    return detectInstalledAgents();
+  }
+
+  /**
+   * 获取默认安装模式
+   */
+  getDefaultInstallMode(): InstallMode {
+    const defaults = this.config.getDefaults();
+    if (defaults.installMode === 'copy' || defaults.installMode === 'symlink') {
+      return defaults.installMode;
+    }
+    return 'symlink';
+  }
+
+  /**
+   * 验证 agent 类型列表
+   */
+  validateAgentTypes(agentNames: string[]): { valid: AgentType[]; invalid: string[] } {
+    const valid: AgentType[] = [];
+    const invalid: string[] = [];
+
+    for (const name of agentNames) {
+      if (isValidAgentType(name)) {
+        valid.push(name);
+      } else {
+        invalid.push(name);
+      }
+    }
+
+    return { valid, invalid };
+  }
+
+  /**
+   * 获取所有可用的 agent 类型
+   */
+  getAllAgentTypes(): AgentType[] {
+    return Object.keys(agents) as AgentType[];
+  }
+
+  /**
+   * 从指定 agents 卸载 skill
+   */
+  uninstallFromAgents(name: string, targetAgents: AgentType[]): Map<AgentType, boolean> {
+    const installer = new Installer({
+      cwd: this.projectRoot,
+      global: this.isGlobal,
+    });
+
+    const results = installer.uninstallFromAgents(name, targetAgents);
+
+    // 从 lock 文件移除 (仅项目模式)
+    if (!this.isGlobal) {
+      this.lockManager.remove(name);
+    }
+
+    // 从 skills.json 移除 (仅项目模式)
+    if (!this.isGlobal && this.config.exists()) {
+      this.config.removeSkill(name);
+    }
+
+    const successCount = Array.from(results.values()).filter((r) => r).length;
+    logger.success(`Uninstalled ${name} from ${successCount} agent(s)`);
 
     return results;
   }

@@ -20,6 +20,14 @@ import {
   getSkillsLockPath,
   getSkillsDir,
   getCacheDir,
+  getHomeDir,
+  getGlobalSkillsDir,
+  getRealPath,
+  getCanonicalSkillsDir,
+  getCanonicalSkillPath,
+  shortenPath,
+  isPathSafe,
+  sanitizeName,
 } from './fs.js';
 
 describe('fs utilities', () => {
@@ -230,6 +238,160 @@ describe('fs utilities', () => {
     it('should return cache directory', () => {
       const cacheDir = getCacheDir();
       expect(cacheDir).toContain('.reskill-cache');
+    });
+
+    it('should return home directory', () => {
+      const home = getHomeDir();
+      expect(typeof home).toBe('string');
+      expect(home.length).toBeGreaterThan(0);
+    });
+
+    it('should return global skills directory', () => {
+      const globalDir = getGlobalSkillsDir();
+      expect(globalDir).toContain('.claude');
+      expect(globalDir).toContain('skills');
+    });
+  });
+
+  describe('getRealPath', () => {
+    it('should return real path for symlink', () => {
+      const targetDir = path.join(tempDir, 'real-target');
+      const linkPath = path.join(tempDir, 'symlink');
+
+      fs.mkdirSync(targetDir);
+      createSymlink(targetDir, linkPath);
+
+      const realPath = getRealPath(linkPath);
+      expect(realPath).toBe(fs.realpathSync(targetDir));
+    });
+
+    it('should return same path for non-symlink', () => {
+      const dirPath = path.join(tempDir, 'regular-dir');
+      fs.mkdirSync(dirPath);
+
+      const realPath = getRealPath(dirPath);
+      expect(realPath).toBe(fs.realpathSync(dirPath));
+    });
+  });
+
+  describe('getCanonicalSkillsDir', () => {
+    it('should return canonical skills directory for project', () => {
+      const canonicalDir = getCanonicalSkillsDir({ cwd: tempDir });
+      expect(canonicalDir).toBe(path.join(tempDir, '.agents', 'skills'));
+    });
+
+    it('should return global canonical skills directory', () => {
+      const canonicalDir = getCanonicalSkillsDir({ global: true });
+      const home = getHomeDir();
+      expect(canonicalDir).toBe(path.join(home, '.agents', 'skills'));
+    });
+
+    it('should use cwd when no options provided', () => {
+      const canonicalDir = getCanonicalSkillsDir();
+      expect(canonicalDir).toContain('.agents');
+      expect(canonicalDir).toContain('skills');
+    });
+  });
+
+  describe('getCanonicalSkillPath', () => {
+    it('should return canonical skill path', () => {
+      const skillPath = getCanonicalSkillPath('my-skill', { cwd: tempDir });
+      expect(skillPath).toBe(path.join(tempDir, '.agents', 'skills', 'my-skill'));
+    });
+
+    it('should return global canonical skill path', () => {
+      const skillPath = getCanonicalSkillPath('my-skill', { global: true });
+      const home = getHomeDir();
+      expect(skillPath).toBe(path.join(home, '.agents', 'skills', 'my-skill'));
+    });
+  });
+
+  describe('shortenPath', () => {
+    it('should replace home directory with ~', () => {
+      const home = getHomeDir();
+      const fullPath = path.join(home, 'projects', 'skill');
+      const shortened = shortenPath(fullPath);
+      expect(shortened).toBe('~/projects/skill');
+    });
+
+    it('should replace cwd with . when path not under home', () => {
+      // Use tempDir which is not under home (it's in /tmp or /var/folders)
+      const fullPath = path.join(tempDir, 'subdir', 'file.txt');
+      const shortened = shortenPath(fullPath, tempDir);
+      expect(shortened).toBe('./subdir/file.txt');
+    });
+
+    it('should return original path if not in home or cwd', () => {
+      const otherPath = '/some/other/path';
+      const shortened = shortenPath(otherPath, tempDir);
+      expect(shortened).toBe(otherPath);
+    });
+
+    it('should prefer home replacement over cwd replacement', () => {
+      // When path is under both home and cwd (cwd is under home), home takes priority
+      const home = getHomeDir();
+      const fullPath = path.join(home, 'projects', 'skill');
+      const shortened = shortenPath(fullPath, home);
+      expect(shortened).toBe('~/projects/skill');
+    });
+  });
+
+  describe('isPathSafe', () => {
+    it('should return true for paths within base', () => {
+      expect(isPathSafe(tempDir, path.join(tempDir, 'subdir'))).toBe(true);
+      expect(isPathSafe(tempDir, path.join(tempDir, 'a', 'b', 'c'))).toBe(true);
+    });
+
+    it('should return true for exact base path', () => {
+      expect(isPathSafe(tempDir, tempDir)).toBe(true);
+    });
+
+    it('should return false for paths outside base', () => {
+      expect(isPathSafe(tempDir, '/other/path')).toBe(false);
+      expect(isPathSafe(tempDir, path.join(tempDir, '..', 'outside'))).toBe(false);
+    });
+
+    it('should handle path traversal attempts', () => {
+      expect(isPathSafe(tempDir, path.join(tempDir, 'sub', '..', '..', 'outside'))).toBe(false);
+    });
+  });
+
+  describe('sanitizeName', () => {
+    it('should remove path separators', () => {
+      expect(sanitizeName('path/to/file')).toBe('pathtofile');
+      expect(sanitizeName('path\\to\\file')).toBe('pathtofile');
+    });
+
+    it('should remove leading dots', () => {
+      expect(sanitizeName('..hidden')).toBe('hidden');
+      expect(sanitizeName('.dotfile')).toBe('dotfile');
+    });
+
+    it('should remove trailing dots and spaces', () => {
+      expect(sanitizeName('name...')).toBe('name');
+      expect(sanitizeName('name   ')).toBe('name');
+    });
+
+    it('should return unnamed-skill for empty result', () => {
+      expect(sanitizeName('')).toBe('unnamed-skill');
+      expect(sanitizeName('...')).toBe('unnamed-skill');
+      expect(sanitizeName('   ')).toBe('unnamed-skill');
+    });
+
+    it('should truncate long names', () => {
+      const longName = 'a'.repeat(300);
+      const sanitized = sanitizeName(longName);
+      expect(sanitized.length).toBe(255);
+    });
+
+    it('should handle normal names unchanged', () => {
+      expect(sanitizeName('valid-skill-name')).toBe('valid-skill-name');
+      expect(sanitizeName('skill123')).toBe('skill123');
+    });
+
+    it('should remove colons and null characters', () => {
+      expect(sanitizeName('C:skill')).toBe('Cskill');
+      expect(sanitizeName('skill\0name')).toBe('skillname');
     });
   });
 });

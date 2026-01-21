@@ -132,6 +132,47 @@ describe('CacheManager', () => {
       expect(stats.registries).toContain('gitlab');
     });
   });
+
+  describe('getCachePath (alias)', () => {
+    it('should be an alias for getSkillCachePath', () => {
+      const pathFromAlias = cacheManager.getCachePath(mockParsed, 'v1.0.0');
+      const pathFromOriginal = cacheManager.getSkillCachePath(mockParsed, 'v1.0.0');
+      expect(pathFromAlias).toBe(pathFromOriginal);
+    });
+  });
+
+  describe('copyTo', () => {
+    it('should copy cached skill to destination', async () => {
+      // First create cached content
+      const cachePath = cacheManager.getSkillCachePath(mockParsed, 'v1.0.0');
+      fs.mkdirSync(cachePath, { recursive: true });
+      fs.writeFileSync(path.join(cachePath, 'SKILL.md'), '# Test Skill');
+      fs.writeFileSync(path.join(cachePath, 'helper.txt'), 'helper content');
+      fs.writeFileSync(path.join(cachePath, '.reskill-commit'), 'abc123');
+
+      const destPath = path.join(tempDir, 'dest-skill');
+      await cacheManager.copyTo(mockParsed, 'v1.0.0', destPath);
+
+      expect(fs.existsSync(path.join(destPath, 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(destPath, 'helper.txt'))).toBe(true);
+    });
+  });
+
+  describe('subPath handling', () => {
+    it('should handle parsed ref with subPath', () => {
+      const parsedWithSubpath: ParsedSkillRef = {
+        registry: 'github',
+        owner: 'user',
+        repo: 'monorepo',
+        subPath: 'packages/my-skill',
+        raw: 'github:user/monorepo/packages/my-skill@v1.0.0',
+      };
+
+      const cachePath = cacheManager.getSkillCachePath(parsedWithSubpath, 'v1.0.0');
+      expect(cachePath).toContain('monorepo');
+      expect(cachePath).toContain('v1.0.0');
+    });
+  });
 });
 
 // Integration tests (require network)
