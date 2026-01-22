@@ -1,5 +1,81 @@
 # reskill
 
+## 0.15.0
+
+### Minor Changes
+
+- e5ae9c1: Add non-blocking CLI update notifier
+
+  **New Feature:**
+
+  - CLI now automatically checks for updates from npm registry on startup
+  - Displays a friendly notification when a newer version is available
+  - Non-blocking design with 3-second timeout, won't interrupt normal workflow
+  - Errors are silently handled to ensure smooth user experience
+
+  **New Module (`src/utils/update-notifier.ts`):**
+
+  - `checkForUpdate()` - Check latest version from npm registry
+  - `formatUpdateMessage()` - Format update notification message
+  - `notifyUpdate()` - Non-blocking update notification
+
+  **Documentation Updates:**
+
+  - Updated README to recommend `npx reskill@latest` for consistent versioning
+  - Added note explaining npx may use cached older versions without `@latest`
+  - Updated all command examples in both English and Chinese documentation
+
+  ***
+
+  添加非阻塞式 CLI 更新通知
+
+  **新功能：**
+
+  - CLI 启动时自动从 npm registry 检查更新
+  - 有新版本可用时显示友好的更新提示
+  - 非阻塞设计，3 秒超时，不会影响正常工作流
+  - 错误静默处理，确保用户体验流畅
+
+  **新模块 (`src/utils/update-notifier.ts`):**
+
+  - `checkForUpdate()` - 从 npm registry 检查最新版本
+  - `formatUpdateMessage()` - 格式化更新提示消息
+  - `notifyUpdate()` - 非阻塞式更新通知
+
+  **文档更新：**
+
+  - 更新 README，推荐使用 `npx reskill@latest` 以确保版本一致性
+  - 添加说明：不加 `@latest` 时 npx 可能使用缓存的旧版本
+  - 更新中英文文档中的所有命令示例
+
+- c3087c6: Separate semantic version from Git reference in skills.lock (npm-style)
+
+  Added a new `ref` field to `skills.lock` to store the Git reference (tag, branch, or commit), while the `version` field now stores the semantic version from `skill.json`. This follows npm's approach where version comes from package.json, not the Git ref.
+
+  **ref field values by scenario:**
+  | Input | ref | version |
+  |-------|-----|---------|
+  | `@v1.0.0` | `v1.0.0` | from skill.json or `v1.0.0` |
+  | `@latest` | resolved tag (e.g. `v2.1.0`) | from skill.json or the tag |
+  | `@master` | `master` | from skill.json or `master` |
+  | `@branch:feature-x` | `feature-x` | from skill.json or `feature-x` |
+  | `@commit:abc1234` | `abc1234` | from skill.json or `abc1234` |
+
+  ***
+
+  将语义化版本与 Git 引用在 skills.lock 中分离存储（npm 风格）
+
+  在 `skills.lock` 中新增 `ref` 字段用于存储 Git 引用（tag、分支或 commit），而 `version` 字段现在存储来自 `skill.json` 的语义化版本。这与 npm 的处理方式一致，版本号来自 package.json 而非 Git 引用。
+
+  **不同场景下 ref 字段的值：**
+  | 输入 | ref | version |
+  |------|-----|---------|
+  | `@v1.0.0` | `v1.0.0` | 来自 skill.json 或 `v1.0.0` |
+  | `@latest` | 解析后的 tag（如 `v2.1.0`） | 来自 skill.json 或该 tag |
+  | `@master` | `master` | 来自 skill.json 或 `master` |
+  | `@branch:feature-x` | `feature-x` | 来自 skill.json 或 `feature-x` |
+  | `@commit:abc1234` | `abc1234` | 来自 skill.json 或 `abc1234` |
+
 ## 0.14.0
 
 ### Minor Changes
