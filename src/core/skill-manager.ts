@@ -78,7 +78,7 @@ export class SkillManager {
   }
 
   /**
-   * Get installation directory
+   * Get legacy installation directory (for backward compatibility)
    *
    * - Global mode: ~/.claude/skills/
    * - Project mode: .skills/ or directory configured in skills.json
@@ -91,10 +91,38 @@ export class SkillManager {
   }
 
   /**
+   * Get canonical skills directory
+   *
+   * This is the primary storage location used by installToAgents().
+   * - Project mode: .agents/skills/
+   * - Global mode: ~/.agents/skills/
+   */
+  getCanonicalSkillsDir(): string {
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    const baseDir = this.isGlobal ? home : this.projectRoot;
+    return path.join(baseDir, '.agents', 'skills');
+  }
+
+  /**
    * Get skill installation path
+   *
+   * Checks canonical location first, then falls back to legacy location.
    */
   getSkillPath(name: string): string {
-    return path.join(this.getInstallDir(), name);
+    // Check canonical location first (.agents/skills/)
+    const canonicalPath = path.join(this.getCanonicalSkillsDir(), name);
+    if (exists(canonicalPath)) {
+      return canonicalPath;
+    }
+
+    // Fall back to legacy location (.skills/)
+    const legacyPath = path.join(this.getInstallDir(), name);
+    if (exists(legacyPath)) {
+      return legacyPath;
+    }
+
+    // Default to canonical location for new installations
+    return canonicalPath;
   }
 
   /**
@@ -279,7 +307,8 @@ export class SkillManager {
 
     const linkPath = this.getSkillPath(skillName);
 
-    ensureDir(this.getInstallDir());
+    // Ensure the parent directory exists
+    ensureDir(path.dirname(linkPath));
     createSymlink(absolutePath, linkPath);
 
     logger.success(`Linked ${skillName} → ${absolutePath}`);
@@ -316,27 +345,61 @@ export class SkillManager {
 
   /**
    * List installed skills
+   *
+   * Checks both canonical (.agents/skills/) and legacy (.skills/) locations.
    */
   list(): InstalledSkill[] {
-    const installDir = this.getInstallDir();
+    const skills: InstalledSkill[] = [];
+    const seenNames = new Set<string>();
 
-    if (!exists(installDir)) {
-      return [];
+    // Check canonical location first (.agents/skills/)
+    const canonicalDir = this.getCanonicalSkillsDir();
+    if (exists(canonicalDir)) {
+      for (const name of listDir(canonicalDir)) {
+        const skillPath = path.join(canonicalDir, name);
+        if (!isDirectory(skillPath)) {
+          continue;
+        }
+
+        const skill = this.getInstalledSkillFromPath(name, skillPath);
+        if (skill) {
+          skills.push(skill);
+          seenNames.add(name);
+        }
+      }
     }
 
-    const skills: InstalledSkill[] = [];
-    const dirs = listDir(installDir);
+    // Check legacy location (.skills/)
+    const legacyDir = this.getInstallDir();
+    if (exists(legacyDir) && legacyDir !== canonicalDir) {
+      for (const name of listDir(legacyDir)) {
+        // Skip if already found in canonical location
+        if (seenNames.has(name)) {
+          continue;
+        }
 
-    for (const name of dirs) {
-      const skillPath = path.join(installDir, name);
+        const skillPath = path.join(legacyDir, name);
+        if (!isDirectory(skillPath)) {
+          continue;
+        }
 
-      if (!isDirectory(skillPath)) {
-        continue;
-      }
+        // Skip symlinks pointing to canonical location (avoid duplicates)
+        if (isSymlink(skillPath)) {
+          try {
+            const realPath = getRealPath(skillPath);
+            if (realPath.includes(path.join('.agents', 'skills'))) {
+              continue;
+            }
+          } catch {
+            // If we can't resolve the symlink, include it anyway
+          }
+        }
 
-      const skill = this.getInstalledSkill(name);
-      if (skill) {
-        skills.push(skill);
+        const skill = this.getInstalledSkillFromPath(name, skillPath);
+        if (skill) {
+          skills.push(skill);
+          seenNames.add(name);
+        }
       }
     }
 
@@ -344,11 +407,9 @@ export class SkillManager {
   }
 
   /**
-   * Get installed skill information
+   * Get installed skill information from a specific path
    */
-  getInstalledSkill(name: string): InstalledSkill | null {
-    const skillPath = this.getSkillPath(name);
-
+  private getInstalledSkillFromPath(name: string, skillPath: string): InstalledSkill | null {
     if (!exists(skillPath)) {
       return null;
     }
@@ -375,6 +436,27 @@ export class SkillManager {
       metadata,
       isLinked,
     };
+  }
+
+  /**
+   * Get installed skill information
+   *
+   * Checks canonical location first, then legacy location.
+   */
+  getInstalledSkill(name: string): InstalledSkill | null {
+    // Check canonical location first (.agents/skills/)
+    const canonicalPath = path.join(this.getCanonicalSkillsDir(), name);
+    if (exists(canonicalPath)) {
+      return this.getInstalledSkillFromPath(name, canonicalPath);
+    }
+
+    // Check legacy location (.skills/)
+    const legacyPath = path.join(this.getInstallDir(), name);
+    if (exists(legacyPath)) {
+      return this.getInstalledSkillFromPath(name, legacyPath);
+    }
+
+    return null;
   }
 
   /**

@@ -39,7 +39,8 @@ describe('link command', () => {
 
     await linkCommand.parseAsync(['node', 'test', localSkillDir]);
 
-    const linkedPath = path.join(tempDir, '.skills', 'my-local-skill');
+    // Links are now created in canonical location (.agents/skills/)
+    const linkedPath = path.join(tempDir, '.agents', 'skills', 'my-local-skill');
     expect(fs.existsSync(linkedPath)).toBe(true);
     expect(fs.lstatSync(linkedPath).isSymbolicLink()).toBe(true);
   });
@@ -51,7 +52,8 @@ describe('link command', () => {
 
     await linkCommand.parseAsync(['node', 'test', localSkillDir, '--name', 'custom-name']);
 
-    const linkedPath = path.join(tempDir, '.skills', 'custom-name');
+    // Links are now created in canonical location (.agents/skills/)
+    const linkedPath = path.join(tempDir, '.agents', 'skills', 'custom-name');
     expect(fs.existsSync(linkedPath)).toBe(true);
   });
 });
@@ -80,18 +82,33 @@ describe('unlink command', () => {
     expect(unlinkCommand.name()).toBe('unlink');
   });
 
-  it('should unlink linked skill', async () => {
-    // Create a local skill and link it
+  it('should unlink linked skill from canonical location', async () => {
+    // Create a local skill and link it in canonical location
     const localSkillDir = path.join(tempDir, 'local-skill');
     fs.mkdirSync(localSkillDir);
     fs.writeFileSync(path.join(localSkillDir, 'SKILL.md'), '# Skill');
 
-    const skillsDir = path.join(tempDir, '.skills');
-    fs.mkdirSync(skillsDir);
+    const skillsDir = path.join(tempDir, '.agents', 'skills');
+    fs.mkdirSync(skillsDir, { recursive: true });
     fs.symlinkSync(localSkillDir, path.join(skillsDir, 'my-skill'), 'dir');
 
     await unlinkCommand.parseAsync(['node', 'test', 'my-skill']);
 
     expect(fs.existsSync(path.join(skillsDir, 'my-skill'))).toBe(false);
+  });
+
+  it('should unlink linked skill from legacy location', async () => {
+    // Create a local skill and link it in legacy location
+    const localSkillDir = path.join(tempDir, 'local-skill');
+    fs.mkdirSync(localSkillDir);
+    fs.writeFileSync(path.join(localSkillDir, 'SKILL.md'), '# Skill');
+
+    const skillsDir = path.join(tempDir, '.skills');
+    fs.mkdirSync(skillsDir, { recursive: true });
+    fs.symlinkSync(localSkillDir, path.join(skillsDir, 'legacy-skill'), 'dir');
+
+    await unlinkCommand.parseAsync(['node', 'test', 'legacy-skill']);
+
+    expect(fs.existsSync(path.join(skillsDir, 'legacy-skill'))).toBe(false);
   });
 });
