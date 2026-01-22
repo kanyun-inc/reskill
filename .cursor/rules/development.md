@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # reskill Development Rules
 
 ## Project Overview
