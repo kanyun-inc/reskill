@@ -111,7 +111,7 @@ export const installCommand = new Command('install')
             }));
 
             const selected = await p.multiselect({
-              message: 'Select agents to install skills to',
+              message: `Select agents to install skills to ${chalk.dim('(Space to toggle, Enter to confirm)')}`,
               options: allAgentChoices,
               required: true,
               initialValues: allAgentTypes,
@@ -143,7 +143,7 @@ export const installCommand = new Command('install')
           }));
 
           const selected = await p.multiselect({
-            message: 'Select agents to install skills to',
+            message: `Select agents to install skills to ${chalk.dim('(Space to toggle, Enter to confirm)')}`,
             options: agentChoices,
             required: true,
             initialValues: installedAgents,
