@@ -81,13 +81,34 @@ describe('SkillManager', () => {
   });
 
   describe('getSkillPath', () => {
-    it('should return skill path', () => {
-      expect(skillManager.getSkillPath('my-skill')).toBe(path.join(tempDir, '.skills', 'my-skill'));
+    it('should return canonical skill path for new skills', () => {
+      // For new skills (not yet installed), getSkillPath returns canonical location
+      expect(skillManager.getSkillPath('my-skill')).toBe(
+        path.join(tempDir, '.agents', 'skills', 'my-skill'),
+      );
+    });
+
+    it('should return legacy path if skill exists there', () => {
+      // Create skill in legacy location
+      const legacyPath = path.join(tempDir, '.skills', 'legacy-skill');
+      fs.mkdirSync(legacyPath, { recursive: true });
+      fs.writeFileSync(path.join(legacyPath, 'skill.json'), '{}');
+
+      expect(skillManager.getSkillPath('legacy-skill')).toBe(legacyPath);
+    });
+
+    it('should return canonical path if skill exists there', () => {
+      // Create skill in canonical location
+      const canonicalPath = path.join(tempDir, '.agents', 'skills', 'canonical-skill');
+      fs.mkdirSync(canonicalPath, { recursive: true });
+      fs.writeFileSync(path.join(canonicalPath, 'skill.json'), '{}');
+
+      expect(skillManager.getSkillPath('canonical-skill')).toBe(canonicalPath);
     });
 
     it('should handle nested skill names', () => {
       expect(skillManager.getSkillPath('my-org/my-skill')).toBe(
-        path.join(tempDir, '.skills', 'my-org/my-skill'),
+        path.join(tempDir, '.agents', 'skills', 'my-org/my-skill'),
       );
     });
   });
@@ -491,6 +512,122 @@ describe('SkillManager', () => {
 
       const installed = await skillManager.installAll();
       expect(installed).toEqual([]);
+    });
+  });
+});
+
+// Bug fix tests - These tests reproduce bugs before fixing them
+describe('SkillManager bug fixes', () => {
+  let tempDir: string;
+  let skillManager: SkillManager;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-bugfix-test-'));
+    skillManager = new SkillManager(tempDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  describe('list() should find skills in canonical directory', () => {
+    // Bug: list() was checking .skills/ instead of .agents/skills/
+    // The installToAgents() method installs to .agents/skills/ (canonical location)
+    // but list() was only checking .skills/ (config installDir)
+
+    it('should find skills installed to .agents/skills/ (canonical location)', () => {
+      // Setup: Create skill in canonical location (where installToAgents puts it)
+      const canonicalDir = path.join(tempDir, '.agents', 'skills', 'pdf');
+      fs.mkdirSync(canonicalDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(canonicalDir, 'skill.json'),
+        JSON.stringify({ name: 'pdf', version: '1.0.0' }),
+      );
+      fs.writeFileSync(path.join(canonicalDir, 'SKILL.md'), '# PDF Skill');
+
+      // Action: Call list()
+      const skills = skillManager.list();
+
+      // Assert: Skill should be found
+      expect(skills).toHaveLength(1);
+      expect(skills[0].name).toBe('pdf');
+    });
+
+    it('should find skills in both canonical and legacy locations', () => {
+      // Create skill in canonical location (.agents/skills/)
+      const canonicalDir = path.join(tempDir, '.agents', 'skills', 'canonical-skill');
+      fs.mkdirSync(canonicalDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(canonicalDir, 'skill.json'),
+        JSON.stringify({ name: 'canonical-skill', version: '1.0.0' }),
+      );
+
+      // Create skill in legacy location (.skills/)
+      const legacyDir = path.join(tempDir, '.skills', 'legacy-skill');
+      fs.mkdirSync(legacyDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(legacyDir, 'skill.json'),
+        JSON.stringify({ name: 'legacy-skill', version: '1.0.0' }),
+      );
+
+      const skills = skillManager.list();
+
+      expect(skills).toHaveLength(2);
+      const names = skills.map((s) => s.name);
+      expect(names).toContain('canonical-skill');
+      expect(names).toContain('legacy-skill');
+    });
+
+    it('should not duplicate skills that exist in both locations', () => {
+      // Create skill in canonical location
+      const canonicalDir = path.join(tempDir, '.agents', 'skills', 'shared-skill');
+      fs.mkdirSync(canonicalDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(canonicalDir, 'skill.json'),
+        JSON.stringify({ name: 'shared-skill', version: '1.0.0' }),
+      );
+
+      // Create symlink in legacy location pointing to canonical
+      const legacyDir = path.join(tempDir, '.skills');
+      fs.mkdirSync(legacyDir, { recursive: true });
+      fs.symlinkSync(canonicalDir, path.join(legacyDir, 'shared-skill'));
+
+      const skills = skillManager.list();
+
+      // Should only list once, not twice
+      expect(skills).toHaveLength(1);
+      expect(skills[0].name).toBe('shared-skill');
+    });
+  });
+
+  describe('getInstalledSkill() should find skills in canonical directory', () => {
+    it('should find skill installed to .agents/skills/', () => {
+      // Setup: Create skill in canonical location
+      const canonicalDir = path.join(tempDir, '.agents', 'skills', 'test-skill');
+      fs.mkdirSync(canonicalDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(canonicalDir, 'skill.json'),
+        JSON.stringify({ name: 'test-skill', version: '2.0.0' }),
+      );
+
+      // Action: Get installed skill
+      const skill = skillManager.getInstalledSkill('test-skill');
+
+      // Assert: Skill should be found
+      expect(skill).not.toBeNull();
+      expect(skill?.name).toBe('test-skill');
+      expect(skill?.metadata?.version).toBe('2.0.0');
+    });
+  });
+
+  describe('getSkillPath() should return canonical path', () => {
+    it('should return path in .agents/skills/ for installed skills', () => {
+      // When skill is installed via installToAgents, it goes to .agents/skills/
+      // getSkillPath should reflect this
+      const skillPath = skillManager.getSkillPath('my-skill');
+
+      // After fix, this should point to canonical location
+      expect(skillPath).toContain('.agents/skills/my-skill');
     });
   });
 });

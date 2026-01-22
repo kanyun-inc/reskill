@@ -138,6 +138,37 @@ describe('SkillManager', () => {
 2. **Integration Tests** - Test module interactions (skip network tests with `it.skip`)
 3. **Edge Cases** - Test error conditions and boundary values
 
+### Bug Fix Protocol (TDD Approach)
+
+All bug fixes MUST follow this protocol:
+
+1. **Reproduce First** - Write a failing test that reproduces the bug before writing any fix code
+2. **Fix the Bug** - Implement the minimal fix to make the test pass
+3. **Verify with Test** - Ensure the test passes after the fix
+4. **Regression Prevention** - The test serves as a regression guard for future changes
+
+```typescript
+// Example: Bug fix test pattern
+describe('SkillManager', () => {
+  describe('bug fixes', () => {
+    it('should list skills from canonical directory (.agents/skills/)', () => {
+      // This test was added to reproduce issue #XXX
+      // Bug: list() was checking .skills/ instead of .agents/skills/
+      
+      // Setup: Create skill in canonical location
+      // Action: Call list()
+      // Assert: Skill should be found
+    });
+  });
+});
+```
+
+**Why this matters:**
+- Ensures the bug is actually fixed, not just the symptom
+- Prevents the same bug from reappearing
+- Documents the bug and its fix in code
+- Provides confidence when refactoring
+
 ## Project Architecture
 
 See `.cursor/ARCHITECTURE.md` for detailed architecture documentation.
