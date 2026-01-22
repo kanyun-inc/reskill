@@ -27,11 +27,7 @@ import {
  *   - (none)        Default branch
  */
 export class GitResolver {
-  private defaultRegistry: string;
-
-  constructor(defaultRegistry = 'github') {
-    this.defaultRegistry = defaultRegistry;
-  }
+  private readonly defaultRegistry = 'github';
 
   /**
    * Parse skill reference string

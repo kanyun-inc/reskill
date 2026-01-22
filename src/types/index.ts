@@ -61,8 +61,6 @@ export interface RegistryConfig {
  * Default configuration
  */
 export interface SkillsDefaults {
-  /** Default registry */
-  registry?: string;
   /** Installation directory, defaults to .skills */
   installDir?: string;
   /** Target agents list */
@@ -87,15 +85,9 @@ export interface SkillOverride {
 export interface SkillsJson {
   /** JSON Schema reference */
   $schema?: string;
-  /** Project name */
-  name?: string;
-  /** Project version */
-  version?: string;
-  /** Project description */
-  description?: string;
   /** Skill dependency mapping */
   skills: Record<string, SkillRef>;
-  /** Registry configuration */
+  /** Registry configuration (for custom git hosts) */
   registries?: RegistryConfig;
   /** Default configuration */
   defaults?: SkillsDefaults;

@@ -56,10 +56,7 @@ export class SkillManager {
     this.config = new ConfigLoader(this.projectRoot);
     this.lockManager = new LockManager(this.projectRoot);
     this.cache = new CacheManager();
-
-    // Use default registry from configuration
-    const defaults = this.config.getDefaults();
-    this.resolver = new GitResolver(defaults.registry);
+    this.resolver = new GitResolver();
   }
 
   /**
