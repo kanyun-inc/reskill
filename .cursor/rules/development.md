@@ -244,6 +244,106 @@ fix(cache): handle symlink creation on Windows
 test(core): add unit tests for GitResolver
 ```
 
+## Changeset Guidelines
+
+This project uses [Changesets](https://github.com/changesets/changesets) for version management and publishing.
+
+### When to Add a Changeset
+
+**REQUIRED** - You MUST add a changeset when:
+- Adding new features (minor version bump)
+- Fixing bugs (patch version bump)
+- Making breaking changes (major version bump)
+- Any change that affects the public API or behavior
+
+**NOT REQUIRED** - You can skip changeset for:
+- Documentation-only changes
+- Internal refactoring that doesn't change behavior
+- Test-only changes
+
+### Creating a Changeset
+
+After completing your changes, run:
+
+```bash
+pnpm changeset
+```
+
+Follow the prompts to select:
+- **Version type**: `patch` (bug fix), `minor` (new feature), `major` (breaking change)
+- **Change description**: Brief summary of your changes
+
+This creates a markdown file in `.changeset/` documenting your changes.
+
+### Changeset File Format
+
+Changeset files should be written in **both English and Chinese** (bilingual) for better accessibility. The format should be **English first, then Chinese**, separated by a horizontal rule (`---`):
+
+```markdown
+---
+"reskill": minor
+---
+
+Brief English summary
+
+**Changes:**
+- English change description
+- Another change in English
+
+**Bug Fixes:**
+- English bug fix description
+
+---
+
+简短的中文摘要
+
+**主要变更：**
+- 中文变更描述
+- 另一个变更的中文描述
+
+**问题修复：**
+- 中文问题修复描述
+```
+
+### Changeset Content Guidelines
+
+1. **Title**: Brief summary in both English and Chinese (English first, then Chinese)
+2. **Structure**: All English content first, then all Chinese content, separated by `---`
+3. **Sections**: Use English headers (`**Changes:**`, `**Bug Fixes:**`) in English section, Chinese headers (`**主要变更：**`, `**问题修复：**`) in Chinese section
+4. **Organization**: Organize by category (Changes, Bug Fixes, Backward Compatibility, etc.) in both sections
+
+### Release Workflow
+
+1. **Add Changeset**: Create changeset file with `pnpm changeset`
+2. **Submit PR**: Commit changeset file along with your code changes
+3. **Merge PR**: When PR is merged to `main`, CI automatically creates a "Version Packages" PR
+4. **Review & Merge**: Review the version bump and changelog, then merge the "Version Packages" PR
+5. **Auto Publish**: CI automatically publishes to npm after the version PR is merged
+
+### Version Bump Types
+
+| Type | Version Change | Use Case | 使用场景 |
+|------|----------------|----------|----------|
+| `patch` | 0.1.0 → 0.1.1 | Bug fixes, documentation updates | Bug 修复，文档更新 |
+| `minor` | 0.1.0 → 0.2.0 | New features (backward compatible) | 新功能（向后兼容） |
+| `major` | 0.1.0 → 1.0.0 | Breaking changes | 破坏性变更 |
+
+### Common Commands
+
+```bash
+# Add changeset (interactive)
+pnpm changeset
+
+# Preview version changes (dry run)
+pnpm changeset status
+
+# Apply version changes locally (CI handles this automatically)
+pnpm version
+
+# Publish to npm (CI handles this automatically)
+pnpm release
+```
+
 ## Development Workflow
 
 ```bash
