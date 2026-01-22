@@ -163,7 +163,10 @@ export const installCommand = new Command('install')
       // ========================================
       let installGlobally = options.global ?? false;
 
-      if (options.global === undefined && !skipConfirm) {
+      // If skills.json exists, default to project install (skip scope selection)
+      const hasSkillsJson = configLoader.exists();
+
+      if (options.global === undefined && !skipConfirm && !hasSkillsJson) {
         const scope = await p.select({
           message: 'Installation scope',
           options: [
@@ -186,6 +189,9 @@ export const installCommand = new Command('install')
         }
 
         installGlobally = scope as boolean;
+      } else if (hasSkillsJson && options.global === undefined) {
+        // skills.json exists, use project install by default
+        p.log.info(`Found ${chalk.cyan('skills.json')}, installing to project`);
       }
 
       // ========================================
