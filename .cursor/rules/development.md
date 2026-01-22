@@ -138,9 +138,46 @@ describe('SkillManager', () => {
 
 ### Test Categories
 
-1. **Unit Tests** - Test individual functions/classes in isolation
-2. **Integration Tests** - Test module interactions (skip network tests with `it.skip`)
+1. **Unit Tests** - Test individual functions/classes in isolation (Vitest)
+2. **Integration Tests** - Test built CLI end-to-end behavior (shell script)
 3. **Edge Cases** - Test error conditions and boundary values
+
+### Integration Testing Strategy
+
+**IMPORTANT:** For CLI commands, always verify behavior with integration tests after unit tests pass.
+
+Integration tests run the **built CLI** (`node dist/cli/index.js`) against a real file system to ensure:
+- Command arguments and options work correctly
+- Output messages are correct
+- Files are created/modified as expected
+- Exit codes are appropriate
+
+**Run integration tests:**
+```bash
+pnpm test:integration
+```
+
+**Add new integration tests in `scripts/integration-test.sh`:**
+```bash
+# Test a new command
+run_test "command description" "$CLI your-command args" 0
+run_test_output "check output" "$CLI your-command" "expected output"
+check_file_exists "file created" "$TEMP_DIR/expected-file.json"
+check_json_field "json field value" "$TEMP_DIR/file.json" ".field.path" "expected"
+```
+
+**When to add integration tests:**
+- New CLI command added
+- Command options/arguments changed
+- Output format changed
+- File creation/modification logic changed
+
+**Manual verification pattern:**
+```bash
+# Always verify changes manually before committing
+pnpm build
+node dist/cli/index.js your-command --options
+```
 
 ### Bug Fix Protocol (TDD Approach)
 
@@ -219,11 +256,16 @@ import { Command } from 'commander';
 import { SkillManager } from '../../core/skill-manager.js';
 import { logger } from '../../utils/logger.js';
 
+// Types for command options
+interface MyCommandOptions {
+  force?: boolean;
+}
+
 export const myCommand = new Command('my-command')
   .description('Description in English')
   .argument('[arg]', 'Argument description')
   .option('-f, --force', 'Force operation')
-  .action(async (arg, options) => {
+  .action((arg: string | undefined, options: MyCommandOptions) => {
     const manager = new SkillManager(process.cwd());
     try {
       // Command implementation
@@ -234,6 +276,29 @@ export const myCommand = new Command('my-command')
     }
   });
 ```
+
+### CLI Command Testing Checklist
+
+When creating or modifying a CLI command, ensure:
+
+1. **Unit tests** (`src/cli/commands/my-command.test.ts`):
+   - Command name and description
+   - Options and arguments definition
+   - Logger output verification
+   - Error handling
+
+2. **Integration tests** (`scripts/integration-test.sh`):
+   - Actual command execution
+   - Output verification
+   - File creation/modification
+   - Exit codes
+
+3. **Manual verification**:
+   ```bash
+   pnpm build
+   node dist/cli/index.js my-command --help
+   node dist/cli/index.js my-command [args]
+   ```
 
 ## Git Commit Guidelines
 
@@ -389,15 +454,32 @@ pnpm dev
 # Build
 pnpm build
 
-# Run all tests
+# Run unit tests (Vitest)
 pnpm test
 
-# Run tests with coverage
+# Run unit tests with coverage
 pnpm test:coverage
+
+# Run integration tests (builds first, then tests CLI)
+pnpm test:integration
 
 # Type checking
 pnpm typecheck
+
+# Manual CLI verification (after build)
+node dist/cli/index.js --help
+node dist/cli/index.js init -y
+node dist/cli/index.js list
 ```
+
+### Complete Test Workflow
+
+For any CLI-related changes, follow this workflow:
+
+1. **Write/update unit tests** - `pnpm test:run`
+2. **Build the project** - `pnpm build`
+3. **Run integration tests** - `pnpm test:integration`
+4. **Manual verification** - `node dist/cli/index.js <command>`
 
 ## File Operations
 

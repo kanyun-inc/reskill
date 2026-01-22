@@ -17,6 +17,7 @@ pnpm build            # Build with Rslib
 pnpm test             # Run tests in watch mode
 pnpm test:run         # Run tests once
 pnpm test:coverage    # Run tests with coverage
+pnpm test:integration # Build and run integration tests
 pnpm lint             # Lint with Biome
 pnpm lint:fix         # Lint and auto-fix
 pnpm typecheck        # TypeScript type checking
@@ -72,10 +73,24 @@ Use `logger` from `src/utils/logger.ts`: `info`, `success`, `warn`, `error`, `de
 
 ## Testing Requirements
 
+### Unit Tests
 - Tests use Vitest with `.test.ts` suffix alongside source files
 - Use temp directories for file system tests, clean up in `afterEach`
 - Mock external dependencies (fs, network)
 - **Bug Fix Protocol**: Write a failing test to reproduce the bug before implementing the fix
+
+### Integration Tests
+- Integration tests verify the built CLI behavior
+- Run with `pnpm test:integration` (builds first, then runs `scripts/integration-test.sh`)
+- Tests execute actual CLI commands against a temporary directory
+- Use integration tests to verify end-to-end command behavior
+
+```bash
+# Run integration tests manually after building
+pnpm build
+node dist/cli/index.js init -y
+node dist/cli/index.js list
+```
 
 ## Changesets
 

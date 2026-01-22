@@ -27,6 +27,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:integration": "pnpm build && vitest run --config vitest.integration.config.ts",
     "lint": "biome check src",
     "lint:fix": "biome check src --write",
     "format": "biome format src --write",

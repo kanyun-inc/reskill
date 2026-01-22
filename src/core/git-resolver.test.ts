@@ -332,16 +332,10 @@ describe('GitResolver', () => {
   });
 
   describe('constructor', () => {
-    it('should use github as default registry', () => {
+    it('should always use github as default registry for short format', () => {
       const resolver = new GitResolver();
       const parsed = resolver.parseRef('user/repo');
       expect(parsed.registry).toBe('github');
-    });
-
-    it('should use custom default registry', () => {
-      const resolver = new GitResolver('gitlab');
-      const parsed = resolver.parseRef('user/repo');
-      expect(parsed.registry).toBe('gitlab');
     });
   });
 

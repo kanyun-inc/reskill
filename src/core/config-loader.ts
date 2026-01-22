@@ -12,7 +12,6 @@ import { exists, getSkillsJsonPath, readJson, writeJson } from '../utils/fs.js';
 const DEFAULT_SKILLS_JSON: SkillsJson = {
   skills: {},
   defaults: {
-    registry: 'github',
     installDir: '.skills',
   },
 };
@@ -21,7 +20,6 @@ const DEFAULT_SKILLS_JSON: SkillsJson = {
  * Default values for SkillsDefaults fields
  */
 const DEFAULT_VALUES: Required<SkillsDefaults> = {
-  registry: 'github',
   installDir: '.skills',
   targetAgents: [],
   installMode: 'symlink',
@@ -197,7 +195,6 @@ export class ConfigLoader {
     const storedDefaults = config.defaults ?? {};
 
     return {
-      registry: storedDefaults.registry ?? DEFAULT_VALUES.registry,
       installDir: storedDefaults.installDir ?? DEFAULT_VALUES.installDir,
       targetAgents: storedDefaults.targetAgents ?? DEFAULT_VALUES.targetAgents,
       installMode: storedDefaults.installMode ?? DEFAULT_VALUES.installMode,

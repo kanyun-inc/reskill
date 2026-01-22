@@ -46,22 +46,17 @@ describe('ConfigLoader', () => {
       const config = configLoader.create();
 
       expect(config.skills).toEqual({});
-      expect(config.defaults?.registry).toBe('github');
       expect(config.defaults?.installDir).toBe('.skills');
       expect(fs.existsSync(path.join(tempDir, 'skills.json'))).toBe(true);
     });
 
     it('should create config with custom options', () => {
       const config = configLoader.create({
-        name: 'my-project',
         defaults: {
-          registry: 'gitlab',
           installDir: 'custom-skills',
         },
       });
 
-      expect(config.name).toBe('my-project');
-      expect(config.defaults?.registry).toBe('gitlab');
       expect(config.defaults?.installDir).toBe('custom-skills');
     });
   });
@@ -73,13 +68,11 @@ describe('ConfigLoader', () => {
 
     it('should load existing config', () => {
       const testConfig: SkillsJson = {
-        name: 'test',
         skills: { 'my-skill': 'github:user/skill@v1.0.0' },
       };
       fs.writeFileSync(path.join(tempDir, 'skills.json'), JSON.stringify(testConfig));
 
       const loaded = configLoader.load();
-      expect(loaded.name).toBe('test');
       expect(loaded.skills['my-skill']).toBe('github:user/skill@v1.0.0');
     });
 
@@ -103,7 +96,6 @@ describe('ConfigLoader', () => {
   describe('getDefaults', () => {
     it('should return default values when no config', () => {
       const defaults = configLoader.getDefaults();
-      expect(defaults.registry).toBe('github');
       expect(defaults.installDir).toBe('.skills');
       expect(defaults.targetAgents).toEqual([]);
       expect(defaults.installMode).toBe('symlink');
@@ -112,13 +104,11 @@ describe('ConfigLoader', () => {
     it('should return config values', () => {
       configLoader.create({
         defaults: {
-          registry: 'gitlab',
           installDir: 'custom',
         },
       });
 
       const defaults = configLoader.getDefaults();
-      expect(defaults.registry).toBe('gitlab');
       expect(defaults.installDir).toBe('custom');
     });
 
@@ -149,7 +139,6 @@ describe('ConfigLoader', () => {
       const defaults = configLoader.getDefaults();
       expect(defaults.targetAgents).toEqual(['cursor', 'claude-code']);
       // Other defaults should remain unchanged
-      expect(defaults.registry).toBe('github');
       expect(defaults.installDir).toBe('.skills');
     });
 
@@ -200,27 +189,6 @@ describe('ConfigLoader', () => {
     });
   });
 
-  describe('getRegistryUrl', () => {
-    it('should return default registry URLs', () => {
-      expect(configLoader.getRegistryUrl('github')).toBe('https://github.com');
-      expect(configLoader.getRegistryUrl('gitlab')).toBe('https://gitlab.com');
-    });
-
-    it('should return custom registry URL', () => {
-      configLoader.create({
-        registries: {
-          internal: 'https://gitlab.company.com',
-        },
-      });
-
-      expect(configLoader.getRegistryUrl('internal')).toBe('https://gitlab.company.com');
-    });
-
-    it('should construct URL for unknown registry', () => {
-      expect(configLoader.getRegistryUrl('custom.example.com')).toBe('https://custom.example.com');
-    });
-  });
-
   describe('getInstallDir', () => {
     it('should return default install directory', () => {
       expect(configLoader.getInstallDir()).toBe(path.join(tempDir, '.skills'));
@@ -243,13 +211,12 @@ describe('ConfigLoader', () => {
       expect(configLoader.exists()).toBe(true);
       const config = configLoader.load();
       expect(config.skills).toEqual({});
-      expect(config.defaults?.registry).toBe('github');
+      expect(config.defaults?.installDir).toBe('.skills');
     });
 
     it('should not overwrite existing skills.json', () => {
       // Create with custom config
       configLoader.create({
-        name: 'my-project',
         skills: { 'existing-skill': 'github:user/skill@v1.0.0' },
       });
 
@@ -257,7 +224,6 @@ describe('ConfigLoader', () => {
       configLoader.ensureExists();
 
       const config = configLoader.load();
-      expect(config.name).toBe('my-project');
       expect(config.skills['existing-skill']).toBe('github:user/skill@v1.0.0');
     });
 
