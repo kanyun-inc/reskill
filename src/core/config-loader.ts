@@ -96,6 +96,19 @@ export class ConfigLoader {
   }
 
   /**
+   * Ensure skills.json exists, create with defaults if not
+   *
+   * @returns true if file was created, false if it already existed
+   */
+  ensureExists(): boolean {
+    if (this.exists()) {
+      return false;
+    }
+    this.create();
+    return true;
+  }
+
+  /**
    * Create default configuration
    */
   create(options?: Partial<SkillsJson>): SkillsJson {

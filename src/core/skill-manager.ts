@@ -187,7 +187,8 @@ export class SkillManager {
     }
 
     // Update skills.json (project mode only)
-    if (!this.isGlobal && save && this.config.exists()) {
+    if (!this.isGlobal && save) {
+      this.config.ensureExists();
       this.config.addSkill(skillName, ref);
     }
 
@@ -597,7 +598,8 @@ export class SkillManager {
     }
 
     // Update skills.json (project mode only)
-    if (!this.isGlobal && save && this.config.exists()) {
+    if (!this.isGlobal && save) {
+      this.config.ensureExists();
       this.config.addSkill(skillName, ref);
     }
 

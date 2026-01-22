@@ -342,6 +342,35 @@ This is test content.
     });
   });
 
+  describe('file exclusion', () => {
+    it('should not copy .reskill-commit file', async () => {
+      // Create .reskill-commit in source (simulating cache directory)
+      writeFileSync(path.join(sourceDir, '.reskill-commit'), 'abc123def456');
+
+      const result = await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+        mode: 'copy',
+      });
+
+      expect(result.success).toBe(true);
+      expect(existsSync(path.join(result.path, 'SKILL.md'))).toBe(true);
+      expect(existsSync(path.join(result.path, '.reskill-commit'))).toBe(false);
+    });
+
+    it('should not copy .reskill-commit file in symlink mode', async () => {
+      // Create .reskill-commit in source
+      writeFileSync(path.join(sourceDir, '.reskill-commit'), 'abc123def456');
+
+      const result = await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+        mode: 'symlink',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.canonicalPath).toBeDefined();
+      expect(existsSync(path.join(result.canonicalPath as string, 'SKILL.md'))).toBe(true);
+      expect(existsSync(path.join(result.canonicalPath as string, '.reskill-commit'))).toBe(false);
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle skill names with hyphens', async () => {
       const result = await installer.installForAgent(sourceDir, 'my-awesome-skill', 'cursor', {

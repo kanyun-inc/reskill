@@ -116,7 +116,7 @@ function remove(targetPath: string): void {
  * Copy directory
  */
 function copyDirectory(src: string, dest: string, options?: { exclude?: string[] }): void {
-  const exclude = new Set(options?.exclude || ['README.md', 'metadata.json']);
+  const exclude = new Set(options?.exclude || ['README.md', 'metadata.json', '.reskill-commit']);
 
   ensureDir(dest);
 

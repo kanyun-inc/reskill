@@ -20,16 +20,23 @@ export class GitCloneError extends Error {
   public readonly repoUrl: string;
   public readonly originalError: Error;
   public readonly isAuthError: boolean;
+  public readonly urlType: 'ssh' | 'https' | 'unknown';
 
   constructor(repoUrl: string, originalError: Error) {
     const isAuthError = GitCloneError.isAuthenticationError(originalError.message);
+    const urlType = GitCloneError.detectUrlType(repoUrl);
 
     let message = `Failed to clone repository: ${repoUrl}`;
     if (isAuthError) {
-      message += '\n\nTip: For private repos, ensure git SSH keys or credentials are configured:';
-      message += '\n  - SSH: Check ~/.ssh/id_rsa or ~/.ssh/id_ed25519';
-      message += "\n  - HTTPS: Run 'git config --global credential.helper store'";
-      message += '\n  - Or use a personal access token in the URL';
+      message += '\n\nTip: For private repos, ensure git credentials are configured:';
+      if (urlType === 'ssh') {
+        message += '\n  - Check ~/.ssh/id_rsa or ~/.ssh/id_ed25519';
+        message += '\n  - Ensure SSH key is added to your Git hosting service';
+      } else {
+        // HTTPS or unknown
+        message += "\n  - Run 'git config --global credential.helper store'";
+        message += '\n  - Or use a personal access token in the URL';
+      }
     }
 
     super(message);
@@ -37,6 +44,20 @@ export class GitCloneError extends Error {
     this.repoUrl = repoUrl;
     this.originalError = originalError;
     this.isAuthError = isAuthError;
+    this.urlType = urlType;
+  }
+
+  /**
+   * Detect URL type from repository URL
+   */
+  static detectUrlType(url: string): 'ssh' | 'https' | 'unknown' {
+    if (url.startsWith('git@') || url.startsWith('ssh://')) {
+      return 'ssh';
+    }
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return 'https';
+    }
+    return 'unknown';
   }
 
   /**

@@ -155,6 +155,45 @@ describe('ConfigLoader', () => {
     });
   });
 
+  describe('ensureExists', () => {
+    it('should create skills.json if not exists', () => {
+      expect(configLoader.exists()).toBe(false);
+
+      configLoader.ensureExists();
+
+      expect(configLoader.exists()).toBe(true);
+      const config = configLoader.load();
+      expect(config.skills).toEqual({});
+      expect(config.defaults?.registry).toBe('github');
+    });
+
+    it('should not overwrite existing skills.json', () => {
+      // Create with custom config
+      configLoader.create({
+        name: 'my-project',
+        skills: { 'existing-skill': 'github:user/skill@v1.0.0' },
+      });
+
+      // ensureExists should not overwrite
+      configLoader.ensureExists();
+
+      const config = configLoader.load();
+      expect(config.name).toBe('my-project');
+      expect(config.skills['existing-skill']).toBe('github:user/skill@v1.0.0');
+    });
+
+    it('should return true if skills.json was created', () => {
+      const created = configLoader.ensureExists();
+      expect(created).toBe(true);
+    });
+
+    it('should return false if skills.json already exists', () => {
+      configLoader.create();
+      const created = configLoader.ensureExists();
+      expect(created).toBe(false);
+    });
+  });
+
   describe('skill management', () => {
     beforeEach(() => {
       configLoader.create();

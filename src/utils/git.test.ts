@@ -188,7 +188,6 @@ describe('git utilities', () => {
 
       expect(error.isAuthError).toBe(true);
       expect(error.message).toContain('SSH');
-      expect(error.message).toContain('credential');
     });
 
     it('should not show auth tips for non-auth errors', () => {
@@ -196,6 +195,38 @@ describe('git utilities', () => {
       const error = new GitCloneError('git@github.com:user/repo.git', otherError);
 
       expect(error.isAuthError).toBe(false);
+    });
+
+    describe('smart tips based on URL type', () => {
+      it('should show only SSH tips for SSH URLs', () => {
+        const authError = new Error('Permission denied (publickey)');
+        const error = new GitCloneError('git@github.com:user/repo.git', authError);
+
+        expect(error.isAuthError).toBe(true);
+        expect(error.message).toContain('SSH');
+        expect(error.message).toContain('~/.ssh/');
+        expect(error.message).not.toContain('credential.helper');
+        expect(error.message).not.toContain('personal access token');
+      });
+
+      it('should show only HTTPS tips for HTTPS URLs', () => {
+        const authError = new Error('Authentication failed for https://github.com');
+        const error = new GitCloneError('https://github.com/user/repo.git', authError);
+
+        expect(error.isAuthError).toBe(true);
+        expect(error.message).toContain('credential.helper');
+        expect(error.message).toContain('personal access token');
+        expect(error.message).not.toContain('~/.ssh/');
+      });
+
+      it('should show only HTTPS tips for HTTP URLs', () => {
+        const authError = new Error('401 Unauthorized');
+        const error = new GitCloneError('http://gitlab.local/user/repo.git', authError);
+
+        expect(error.isAuthError).toBe(true);
+        expect(error.message).toContain('credential.helper');
+        expect(error.message).not.toContain('~/.ssh/');
+      });
     });
 
     describe('isAuthenticationError', () => {
