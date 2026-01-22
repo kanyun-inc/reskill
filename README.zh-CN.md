@@ -42,7 +42,6 @@ reskill 提供**精细化的 skill 管理和同步方案**：
 
 - **声明式配置** — `skills.json` 清晰表达项目依赖
 - **全局缓存** — 避免重复下载，加速安装
-- **本地开发** — 使用 `link` 链接本地 skill 进行开发调试
 
 ### 工程化项目管理
 
@@ -152,8 +151,6 @@ npx reskill@latest list
 | `npx reskill@latest update [skill]`     | 更新所有或指定 skill                            |
 | `npx reskill@latest outdated`           | 检查过期的 skills                               |
 | `npx reskill@latest uninstall <skill>`  | 卸载 skill                                      |
-| `npx reskill@latest link <path>`        | 链接本地 skill（开发用）                        |
-| `npx reskill@latest unlink <skill>`     | 取消链接本地 skill                              |
 | `npx reskill@latest completion install` | 安装 Shell Tab 补全                             |
 
 运行 `npx reskill@latest <command> --help` 查看详细选项。

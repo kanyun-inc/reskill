@@ -1,7 +1,6 @@
 import * as path from 'node:path';
 import type { InstalledSkill, InstallOptions, SkillJson } from '../types/index.js';
 import {
-  createSymlink,
   ensureDir,
   exists,
   getGlobalSkillsDir,
@@ -336,67 +335,6 @@ export class SkillManager {
     }
 
     return updated;
-  }
-
-  /**
-   * Link local skill for development
-   */
-  link(localPath: string, name?: string): InstalledSkill {
-    const absolutePath = path.resolve(localPath);
-
-    if (!exists(absolutePath)) {
-      throw new Error(`Path ${localPath} does not exist`);
-    }
-
-    // Read skill.json to get name
-    const skillJsonPath = path.join(absolutePath, 'skill.json');
-    let skillName = name || path.basename(absolutePath);
-
-    if (exists(skillJsonPath)) {
-      try {
-        const skillJson = readJson<SkillJson>(skillJsonPath);
-        skillName = name || skillJson.name || skillName;
-      } catch {
-        // Ignore parse errors
-      }
-    }
-
-    const linkPath = this.getSkillPath(skillName);
-
-    // Ensure the parent directory exists
-    ensureDir(path.dirname(linkPath));
-    createSymlink(absolutePath, linkPath);
-
-    logger.success(`Linked ${skillName} → ${absolutePath}`);
-
-    return {
-      name: skillName,
-      path: linkPath,
-      version: 'local',
-      source: absolutePath,
-      isLinked: true,
-    };
-  }
-
-  /**
-   * Unlink a linked skill
-   */
-  unlink(name: string): boolean {
-    const skillPath = this.getSkillPath(name);
-
-    if (!exists(skillPath)) {
-      logger.warn(`Skill ${name} is not installed`);
-      return false;
-    }
-
-    if (!isSymlink(skillPath)) {
-      logger.warn(`Skill ${name} is not a linked skill`);
-      return false;
-    }
-
-    remove(skillPath);
-    logger.success(`Unlinked ${name}`);
-    return true;
   }
 
   /**

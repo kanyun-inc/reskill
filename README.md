@@ -42,7 +42,6 @@ reskill offers **fine-grained skill management and synchronization**:
 
 - **Declarative config** — `skills.json` clearly expresses project dependencies
 - **Global cache** — Avoid redundant downloads, speed up installation
-- **Local development** — Use `link` to develop and debug skills locally
 
 ### Engineering-Grade Management
 
@@ -151,8 +150,6 @@ npx reskill@latest list
 | `npx reskill@latest update [skill]` | Update all or specific skill |
 | `npx reskill@latest outdated` | Check for outdated skills |
 | `npx reskill@latest uninstall <skill>` | Remove a skill |
-| `npx reskill@latest link <path>` | Link local skill for development |
-| `npx reskill@latest unlink <skill>` | Unlink a local skill |
 | `npx reskill@latest completion install` | Install shell tab completion |
 
 Run `npx reskill@latest <command> --help` for detailed options.

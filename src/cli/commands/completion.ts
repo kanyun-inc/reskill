@@ -13,8 +13,6 @@ const SUBCOMMANDS = [
   { name: 'update', description: 'Update installed skills' },
   { name: 'info', description: 'Show skill details' },
   { name: 'list', description: 'List installed skills' },
-  { name: 'link', description: 'Link a local skill for development' },
-  { name: 'unlink', description: 'Unlink a linked skill' },
   { name: 'init', description: 'Initialize skills.json' },
   { name: 'outdated', description: 'Check for outdated skills' },
   { name: 'completion', description: 'Setup shell completion' },
@@ -24,11 +22,6 @@ const SUBCOMMANDS = [
  * Commands that need skill name completion
  */
 const SKILL_COMPLETION_COMMANDS = ['info', 'uninstall', 'update'];
-
-/**
- * Commands that need linked skill name completion only
- */
-const LINKED_SKILL_COMMANDS = ['unlink'];
 
 /**
  * Get all agent type names for completion
@@ -50,18 +43,6 @@ function getInstalledSkillNames(): string[] {
   }
 }
 
-/**
- * Get linked skill names for completion
- */
-function getLinkedSkillNames(): string[] {
-  try {
-    const skillManager = new SkillManager();
-    const skills = skillManager.list();
-    return skills.filter((s) => s.isLinked).map((s) => s.name);
-  } catch {
-    return [];
-  }
-}
 
 /**
  * Handle tab completion
@@ -112,21 +93,6 @@ function handleCompletion(): void {
       return;
     }
     const skills = getInstalledSkillNames();
-    tabtab.log(skills);
-    return;
-  }
-
-  // Completing skill name for unlink command (only linked skills, only ONE argument)
-  if (LINKED_SKILL_COMMANDS.includes(command)) {
-    if (parts.length > 2 && line.endsWith(' ')) {
-      tabtab.log([]);
-      return;
-    }
-    if (parts.length > 3) {
-      tabtab.log([]);
-      return;
-    }
-    const skills = getLinkedSkillNames();
     tabtab.log(skills);
     return;
   }

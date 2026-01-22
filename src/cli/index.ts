@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
+import { Command } from 'commander';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Command } from 'commander';
 import { logger } from '../utils/logger.js';
 import { checkForUpdate, formatUpdateMessage } from '../utils/update-notifier.js';
 import {
@@ -11,12 +11,10 @@ import {
   infoCommand,
   initCommand,
   installCommand,
-  linkCommand,
   listCommand,
   maybeHandleCompletion,
   outdatedCommand,
   uninstallCommand,
-  unlinkCommand,
   updateCommand,
 } from './commands/index.js';
 
@@ -44,8 +42,6 @@ program.addCommand(infoCommand);
 program.addCommand(updateCommand);
 program.addCommand(outdatedCommand);
 program.addCommand(uninstallCommand);
-program.addCommand(linkCommand);
-program.addCommand(unlinkCommand);
 program.addCommand(completionCommand);
 
 // Start update check in background (non-blocking)

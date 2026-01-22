@@ -2,7 +2,6 @@ export { completionCommand, maybeHandleCompletion } from './completion.js';
 export { infoCommand } from './info.js';
 export { initCommand } from './init.js';
 export { installCommand } from './install.js';
-export { linkCommand, unlinkCommand } from './link.js';
 export { listCommand } from './list.js';
 export { outdatedCommand } from './outdated.js';
 export { uninstallCommand } from './uninstall.js';

@@ -240,10 +240,6 @@ skills list                    # 列出已安装 skills
 skills info <skill>            # 查看 skill 详情
 skills search <keyword>        # 搜索 skills（需要索引服务，可选）
 
-# 开发调试
-skills link <path>             # 链接本地 skill（开发用）
-skills unlink <skill>          # 取消链接
-
 # 发布（可选）
 skills publish                 # 发布 skill（打 tag + push）
 ```
@@ -326,18 +322,6 @@ Installed Skills (.skills/):
   web-builder            v3.0.0    gitlab:cortex/skills/web-builder          
 
 Total: 3 skills
-```
-
-#### `skills link`
-
-```bash
-$ skills link ../my-local-skill
-
-🔗 Linking ../my-local-skill as my-local-skill
-   Symlink created: .skills/my-local-skill → ../my-local-skill
-✅ Linked my-local-skill (local development mode)
-
-Note: Local links are not saved to skills.json
 ```
 
 ---
@@ -581,7 +565,6 @@ export async function loadSkills(projectDir: string): Promise<Skill[]> {
 | 实现 `skills uninstall` | P1 | 1h |
 | 实现 `skills outdated` | P1 | 2h |
 | 实现全局缓存 | P1 | 2h |
-| 实现 `skills link` | P2 | 2h |
 
 ### Phase 3：运行时集成
 
