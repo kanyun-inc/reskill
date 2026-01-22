@@ -19,6 +19,11 @@ Fix `list()` and `getInstalledSkill()` methods to correctly check canonical dire
 - Still supports skills in legacy `.skills/` location
 - Automatically detects and merges skill lists from both locations
 
+**CI/Docs:**
+- Fixed CI workflow: use `pnpm changeset version` instead of `pnpm version`
+- Added `fetch-depth: 0` to checkout step for complete git history
+- Added release workflow checklist and troubleshooting guide
+
 ---
 
 修复 `list()` 和 `getInstalledSkill()` 方法，现在会正确检查规范目录（canonical directory）
@@ -37,3 +42,8 @@ Fix `list()` and `getInstalledSkill()` methods to correctly check canonical dire
 **向后兼容：**
 - 仍然支持旧位置 `.skills/` 中的技能
 - 自动检测并合并两个位置的技能列表
+
+**CI/文档：**
+- 修复 CI 工作流：使用 `pnpm changeset version` 替代 `pnpm version`
+- 添加 `fetch-depth: 0` 以获取完整 git 历史
+- 添加发版流程检查清单和故障排除指南

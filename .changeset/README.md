@@ -42,7 +42,11 @@ pnpm changeset
 pnpm changeset status
 
 # Apply version changes locally (CI handles this)
-pnpm version
+# Note: Use 'pnpm run version' or 'pnpm changeset version', NOT 'pnpm version'
+# 'pnpm version' without 'run' is a built-in pnpm command that shows version info
+pnpm run version
+# or
+pnpm changeset version
 
 # Publish to npm (CI handles this)
 pnpm release

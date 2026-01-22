@@ -338,11 +338,40 @@ pnpm changeset
 pnpm changeset status
 
 # Apply version changes locally (CI handles this automatically)
-pnpm version
+# IMPORTANT: Use 'pnpm run version' or 'pnpm changeset version', NOT 'pnpm version'
+# 'pnpm version' without 'run' is a built-in pnpm command that shows version info
+pnpm run version
+# or
+pnpm changeset version
 
 # Publish to npm (CI handles this automatically)
 pnpm release
 ```
+
+### Release Workflow Checklist
+
+Before merging to `main`, verify:
+
+1. **Changeset exists**: Check `.changeset/` has a new `.md` file (not just config.json and README.md)
+2. **Version type is correct**: `patch` / `minor` / `major` matches the change scope
+3. **Changeset content**: Description is bilingual (English + Chinese)
+
+After merging to `main`:
+
+1. **CI runs successfully**: Check GitHub Actions for the "Release" workflow
+2. **Version PR created**: CI should create a "chore: version packages" PR
+3. **Review version PR**: Verify `package.json` version and `CHANGELOG.md` updates
+4. **Merge version PR**: This triggers npm publish
+
+### Troubleshooting Release Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| "No changesets found" | Missing changeset file | Run `pnpm changeset` and commit the file |
+| "Version already published" | Version not bumped | Add a changeset to trigger version bump |
+| "No commits between branches" | `pnpm version` ran instead of `pnpm changeset version` | Use `pnpm changeset version` in CI |
+| CI fails to create PR | Missing permissions | Check `GITHUB_TOKEN` permissions in workflow |
+| npm publish fails | Missing or invalid token | Check `NPM_TOKEN` secret in repository settings |
 
 ## Development Workflow
 
