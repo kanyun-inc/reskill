@@ -141,6 +141,78 @@ describe('CLI Integration: install --mode symlink (default)', () => {
     });
   });
 
+  describe('custom installDir from skills.json', () => {
+    it('should respect custom installDir in skills.json', () => {
+      // Setup skills.json with custom installDir
+      setupSkillsJson(
+        tempDir,
+        { 'test-skill': 'github:test/test-skill@v1.0.0' },
+        { installDir: '.skills', targetAgents: ['cursor'] },
+      );
+
+      // Verify skills.json was created correctly
+      const skillsJson = readSkillsJson(tempDir);
+      expect(skillsJson.defaults?.installDir).toBe('.skills');
+    });
+
+    it('should create skills in custom installDir when manually set up', () => {
+      // Setup skills.json with custom installDir
+      setupSkillsJson(
+        tempDir,
+        {},
+        { installDir: '.my-skills', targetAgents: ['cursor'] },
+      );
+
+      // Create skill manually in custom location (simulating installation)
+      createMockSkill(path.join(tempDir, '.my-skills'), 'test-skill');
+
+      // Verify skill exists in custom location
+      expect(pathExists(path.join(tempDir, '.my-skills', 'test-skill'))).toBe(true);
+      expect(pathExists(path.join(tempDir, '.my-skills', 'test-skill', 'skill.json'))).toBe(true);
+
+      // Verify skill is NOT in default .agents/skills location
+      expect(pathExists(path.join(tempDir, '.agents', 'skills', 'test-skill'))).toBe(false);
+    });
+
+    it('should list skills from custom installDir', () => {
+      // Setup skills.json with custom installDir
+      setupSkillsJson(
+        tempDir,
+        {},
+        { installDir: '.custom-skills', targetAgents: ['cursor'] },
+      );
+
+      // Create skill in custom location
+      createMockSkill(path.join(tempDir, '.custom-skills'), 'custom-skill');
+
+      // Also add to skills.json config to simulate a proper installation
+      const skillsJson = readSkillsJson(tempDir);
+      skillsJson.skills['custom-skill'] = 'github:test/custom-skill@v1.0.0';
+      fs.writeFileSync(
+        path.join(tempDir, 'skills.json'),
+        JSON.stringify(skillsJson, null, 2),
+      );
+
+      // List should find the skill
+      const { stdout, exitCode } = runCli('list', tempDir);
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain('custom-skill');
+    });
+
+    it('should use nested custom installDir path', () => {
+      // Setup skills.json with nested custom installDir
+      setupSkillsJson(
+        tempDir,
+        {},
+        { installDir: 'custom/nested/skills', targetAgents: ['cursor'] },
+      );
+
+      // Verify skills.json was created correctly
+      const skillsJson = readSkillsJson(tempDir);
+      expect(skillsJson.defaults?.installDir).toBe('custom/nested/skills');
+    });
+  });
+
   describe('multiple agents', () => {
     it('should support -a flag for multiple agents', () => {
       const { stdout } = runCli('install --help', tempDir);

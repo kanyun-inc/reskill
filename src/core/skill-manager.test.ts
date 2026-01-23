@@ -106,6 +106,23 @@ describe('SkillManager', () => {
       expect(skillManager.getSkillPath('canonical-skill')).toBe(canonicalPath);
     });
 
+    it('should respect custom installDir from config for new skills', () => {
+      // Create skills.json with custom installDir
+      fs.writeFileSync(
+        path.join(tempDir, 'skills.json'),
+        JSON.stringify({
+          skills: {},
+          defaults: { installDir: 'custom-skills' },
+        }),
+      );
+
+      const manager = new SkillManager(tempDir);
+      // For new skills, it should use the custom installDir if configured
+      expect(manager.getSkillPath('my-skill')).toBe(
+        path.join(tempDir, 'custom-skills', 'my-skill'),
+      );
+    });
+
     it('should handle nested skill names', () => {
       expect(skillManager.getSkillPath('my-org/my-skill')).toBe(
         path.join(tempDir, '.agents', 'skills', 'my-org/my-skill'),

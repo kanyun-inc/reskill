@@ -47,6 +47,8 @@ export interface InstallerOptions {
   cwd?: string;
   /** Installation mode */
   mode?: InstallMode;
+  /** Custom installation directory (relative to cwd), overrides default .agents/skills */
+  installDir?: string;
 }
 
 const AGENTS_DIR = '.agents';
@@ -99,9 +101,19 @@ function isPathSafe(basePath: string, targetPath: string): boolean {
 
 /**
  * Get canonical skills directory path
+ *
+ * @param isGlobal - Whether installing globally
+ * @param cwd - Current working directory
+ * @param installDir - Custom installation directory (relative to cwd), overrides default
  */
-function getCanonicalSkillsDir(isGlobal: boolean, cwd?: string): string {
+function getCanonicalSkillsDir(isGlobal: boolean, cwd?: string, installDir?: string): string {
   const baseDir = isGlobal ? homedir() : cwd || process.cwd();
+
+  // Use custom installDir if provided, otherwise use default
+  if (installDir && !isGlobal) {
+    return path.join(baseDir, installDir);
+  }
+
   return path.join(baseDir, AGENTS_DIR, SKILLS_SUBDIR);
 }
 
@@ -210,10 +222,12 @@ async function createSymlink(target: string, linkPath: string): Promise<boolean>
 export class Installer {
   private cwd: string;
   private isGlobal: boolean;
+  private installDir?: string;
 
-  constructor(options: { cwd?: string; global?: boolean } = {}) {
+  constructor(options: { cwd?: string; global?: boolean; installDir?: string } = {}) {
     this.cwd = options.cwd || process.cwd();
     this.isGlobal = options.global || false;
+    this.installDir = options.installDir;
   }
 
   /**
@@ -221,7 +235,7 @@ export class Installer {
    */
   getCanonicalPath(skillName: string): string {
     const sanitized = sanitizeName(skillName);
-    const canonicalBase = getCanonicalSkillsDir(this.isGlobal, this.cwd);
+    const canonicalBase = getCanonicalSkillsDir(this.isGlobal, this.cwd, this.installDir);
     return path.join(canonicalBase, sanitized);
   }
 
@@ -254,7 +268,7 @@ export class Installer {
     const sanitized = sanitizeName(skillName);
 
     // Canonical location
-    const canonicalBase = getCanonicalSkillsDir(this.isGlobal, this.cwd);
+    const canonicalBase = getCanonicalSkillsDir(this.isGlobal, this.cwd, this.installDir);
     const canonicalDir = path.join(canonicalBase, sanitized);
 
     // Agent specific location

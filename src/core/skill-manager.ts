@@ -13,10 +13,10 @@ import {
 } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import {
-  type AgentType,
   agents,
   detectInstalledAgents,
   isValidAgentType,
+  type AgentType,
 } from './agent-registry.js';
 import { CacheManager } from './cache-manager.js';
 import { ConfigLoader } from './config-loader.js';
@@ -102,7 +102,7 @@ export class SkillManager {
   /**
    * Get skill installation path
    *
-   * Checks canonical location first, then falls back to legacy location.
+   * Checks canonical location first, then falls back to configured installDir.
    */
   getSkillPath(name: string): string {
     // Check canonical location first (.agents/skills/)
@@ -111,10 +111,19 @@ export class SkillManager {
       return canonicalPath;
     }
 
-    // Fall back to legacy location (.skills/)
-    const legacyPath = path.join(this.getInstallDir(), name);
-    if (exists(legacyPath)) {
-      return legacyPath;
+    // Check configured installation directory (.skills/ or custom)
+    const installDir = this.getInstallDir();
+    const installPath = path.join(installDir, name);
+    if (exists(installPath)) {
+      return installPath;
+    }
+
+    // Default to configured installation directory for new installations
+    // if it's not the default .skills, otherwise use canonical location.
+    // This respects "installDir" in skills.json.
+    const defaults = this.config.getDefaults();
+    if (defaults.installDir !== '.skills' && !this.isGlobal) {
+      return installPath;
     }
 
     // Default to canonical location for new installations
@@ -583,10 +592,12 @@ export class SkillManager {
       }
     }
 
-    // Create Installer
+    // Create Installer with custom installDir from config
+    const defaults = this.config.getDefaults();
     const installer = new Installer({
       cwd: this.projectRoot,
       global: this.isGlobal,
+      installDir: defaults.installDir,
     });
 
     // Install to all target agents
@@ -694,9 +705,11 @@ export class SkillManager {
    * Uninstall skill from specified agents
    */
   uninstallFromAgents(name: string, targetAgents: AgentType[]): Map<AgentType, boolean> {
+    const defaults = this.config.getDefaults();
     const installer = new Installer({
       cwd: this.projectRoot,
       global: this.isGlobal,
+      installDir: defaults.installDir,
     });
 
     const results = installer.uninstallFromAgents(name, targetAgents);

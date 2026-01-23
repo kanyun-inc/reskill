@@ -440,6 +440,91 @@ This is test content.
     });
   });
 
+  describe('custom installDir', () => {
+    it('should use custom installDir for canonical path', () => {
+      const customInstaller = new Installer({ cwd: tempDir, installDir: '.skills' });
+      const canonicalPath = customInstaller.getCanonicalPath('test-skill');
+
+      expect(canonicalPath).toContain('.skills/test-skill');
+      expect(canonicalPath).not.toContain('.agents/skills');
+    });
+
+    it('should install to custom installDir in symlink mode', async () => {
+      const customInstaller = new Installer({ cwd: tempDir, installDir: '.my-custom-skills' });
+
+      const result = await customInstaller.installForAgent(sourceDir, 'test-skill', 'cursor', {
+        mode: 'symlink',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe('symlink');
+      expect(result.canonicalPath).toContain('.my-custom-skills/test-skill');
+      expect(result.canonicalPath).not.toContain('.agents/skills');
+
+      // Check canonical path exists
+      expect(result.canonicalPath).toBeDefined();
+      expect(existsSync(result.canonicalPath as string)).toBe(true);
+    });
+
+    it('should install to custom installDir in copy mode', async () => {
+      const customInstaller = new Installer({ cwd: tempDir, installDir: '.custom-dir' });
+
+      // Copy mode installs directly to agent directory, not canonical
+      const result = await customInstaller.installForAgent(sourceDir, 'test-skill', 'cursor', {
+        mode: 'copy',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe('copy');
+      // Copy mode goes to agent directory, not canonical
+      expect(result.path).toContain('.cursor/skills/test-skill');
+    });
+
+    it('should use default .agents/skills when installDir is not provided', () => {
+      const defaultInstaller = new Installer({ cwd: tempDir });
+      const canonicalPath = defaultInstaller.getCanonicalPath('test-skill');
+
+      expect(canonicalPath).toContain('.agents/skills/test-skill');
+    });
+
+    it('should ignore installDir in global mode', () => {
+      const globalInstaller = new Installer({ cwd: tempDir, global: true, installDir: '.custom-dir' });
+      const canonicalPath = globalInstaller.getCanonicalPath('test-skill');
+
+      // Global mode should use home directory, not custom installDir
+      expect(canonicalPath).toContain('.agents/skills/test-skill');
+      expect(canonicalPath).not.toContain('.custom-dir');
+    });
+
+    it('should support nested custom installDir paths', async () => {
+      const customInstaller = new Installer({ cwd: tempDir, installDir: 'custom/nested/skills' });
+
+      const result = await customInstaller.installForAgent(sourceDir, 'test-skill', 'cursor', {
+        mode: 'symlink',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.canonicalPath).toContain('custom/nested/skills/test-skill');
+    });
+
+    it('should uninstall from custom installDir', async () => {
+      const customInstaller = new Installer({ cwd: tempDir, installDir: '.skills' });
+
+      // Install first
+      await customInstaller.installForAgent(sourceDir, 'test-skill', 'cursor', {
+        mode: 'symlink',
+      });
+
+      const canonicalPath = customInstaller.getCanonicalPath('test-skill');
+      expect(existsSync(canonicalPath)).toBe(true);
+
+      // Uninstall
+      customInstaller.uninstallFromAgents('test-skill', ['cursor']);
+
+      expect(existsSync(canonicalPath)).toBe(false);
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle skill names with hyphens', async () => {
       const result = await installer.installForAgent(sourceDir, 'my-awesome-skill', 'cursor', {
