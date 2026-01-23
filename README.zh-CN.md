@@ -40,16 +40,17 @@ npx reskill@latest <command>  # 或直接使用 npx
 
 ## 命令
 
-| 命令 | 说明 |
-|------|------|
-| `init` | 初始化 `skills.json` |
-| `install [skill]` | 安装 skills |
-| `list` | 列出已安装的 skills |
-| `info <skill>` | 查看 skill 详情 |
-| `update [skill]` | 更新 skills |
-| `outdated` | 检查过期的 skills |
-| `uninstall <skill>` | 卸载 skill |
-| `completion install` | 安装 Shell Tab 补全 |
+| 命令                 | 说明                 |
+| -------------------- | -------------------- |
+| `init`               | 初始化 `skills.json` |
+| `install [skill]`    | 安装 skills          |
+| `list`               | 列出已安装的 skills  |
+| `info <skill>`       | 查看 skill 详情      |
+| `update [skill]`     | 更新 skills          |
+| `outdated`           | 检查过期的 skills    |
+| `uninstall <skill>`  | 卸载 skill           |
+| `doctor`             | 诊断环境并检查问题   |
+| `completion install` | 安装 Shell Tab 补全  |
 
 运行 `reskill <command> --help` 查看详细选项。
 
@@ -64,13 +65,13 @@ https://github.com/user/repo/tree/main/path # 网页 URL（支持子路径）
 
 ## 版本规范
 
-| 格式 | 示例 | 说明 |
-|------|------|------|
-| 精确版本 | `@v1.0.0` | 锁定到指定 tag |
-| 最新版本 | `@latest` | 获取最新 tag |
-| 范围版本 | `@^2.0.0` | semver 兼容 |
-| 分支 | `@branch:develop` | 指定分支 |
-| Commit | `@commit:abc1234` | 指定 commit hash |
+| 格式     | 示例              | 说明             |
+| -------- | ----------------- | ---------------- |
+| 精确版本 | `@v1.0.0`         | 锁定到指定 tag   |
+| 最新版本 | `@latest`         | 获取最新 tag     |
+| 范围版本 | `@^2.0.0`         | semver 兼容      |
+| 分支     | `@branch:develop` | 指定分支         |
+| Commit   | `@commit:abc1234` | 指定 commit hash |
 
 ## 配置
 
@@ -104,20 +105,20 @@ git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.company.
 
 Skills 默认安装到 `.skills/`，可与任何 Agent 集成：
 
-| Agent | 路径 |
-|-------|------|
-| Cursor | `.cursor/rules/` 或 `.cursor/skills/` |
-| Claude Code | `.claude/skills/` |
-| Codex | `.codex/skills/` |
-| Windsurf | `.windsurf/skills/` |
-| GitHub Copilot | `.github/skills/` |
+| Agent          | 路径                                  |
+| -------------- | ------------------------------------- |
+| Cursor         | `.cursor/rules/` 或 `.cursor/skills/` |
+| Claude Code    | `.claude/skills/`                     |
+| Codex          | `.codex/skills/`                      |
+| Windsurf       | `.windsurf/skills/`                   |
+| GitHub Copilot | `.github/skills/`                     |
 
 ## 环境变量
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
+| 变量                | 说明         | 默认值             |
+| ------------------- | ------------ | ------------------ |
 | `RESKILL_CACHE_DIR` | 全局缓存目录 | `~/.reskill-cache` |
-| `DEBUG` | 启用调试日志 | - |
+| `DEBUG`             | 启用调试日志 | -                  |
 
 ## 开发
 

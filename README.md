@@ -40,16 +40,17 @@ npx reskill@latest <command>  # Or use npx directly
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `init` | Initialize `skills.json` |
-| `install [skill]` | Install skills |
-| `list` | List installed skills |
-| `info <skill>` | Show skill details |
-| `update [skill]` | Update skills |
-| `outdated` | Check for outdated skills |
-| `uninstall <skill>` | Remove a skill |
-| `completion install` | Install shell tab completion |
+| Command              | Description                               |
+| -------------------- | ----------------------------------------- |
+| `init`               | Initialize `skills.json`                  |
+| `install [skill]`    | Install skills                            |
+| `list`               | List installed skills                     |
+| `info <skill>`       | Show skill details                        |
+| `update [skill]`     | Update skills                             |
+| `outdated`           | Check for outdated skills                 |
+| `uninstall <skill>`  | Remove a skill                            |
+| `doctor`             | Diagnose environment and check for issues |
+| `completion install` | Install shell tab completion              |
 
 Run `reskill <command> --help` for detailed options.
 
@@ -77,12 +78,12 @@ npx reskill@latest install user/skill@v1.0.0
 
 ## Version Specification
 
-| Format | Example | Description |
-|--------|---------|-------------|
-| Exact | `@v1.0.0` | Lock to specific tag |
-| Latest | `@latest` | Get the latest tag |
-| Range | `@^2.0.0` | Semver compatible |
-| Branch | `@branch:develop` | Specific branch |
+| Format | Example           | Description          |
+| ------ | ----------------- | -------------------- |
+| Exact  | `@v1.0.0`         | Lock to specific tag |
+| Latest | `@latest`         | Get the latest tag   |
+| Range  | `@^2.0.0`         | Semver compatible    |
+| Branch | `@branch:develop` | Specific branch      |
 | Commit | `@commit:abc1234` | Specific commit hash |
 
 ## Configuration
@@ -117,20 +118,20 @@ git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.company.
 
 Skills are installed to `.skills/` by default and can be integrated with any agent:
 
-| Agent | Path |
-|-------|------|
-| Cursor | `.cursor/rules/` or `.cursor/skills/` |
-| Claude Code | `.claude/skills/` |
-| Codex | `.codex/skills/` |
-| Windsurf | `.windsurf/skills/` |
-| GitHub Copilot | `.github/skills/` |
+| Agent          | Path                                  |
+| -------------- | ------------------------------------- |
+| Cursor         | `.cursor/rules/` or `.cursor/skills/` |
+| Claude Code    | `.claude/skills/`                     |
+| Codex          | `.codex/skills/`                      |
+| Windsurf       | `.windsurf/skills/`                   |
+| GitHub Copilot | `.github/skills/`                     |
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
+| Variable            | Description            | Default            |
+| ------------------- | ---------------------- | ------------------ |
 | `RESKILL_CACHE_DIR` | Global cache directory | `~/.reskill-cache` |
-| `DEBUG` | Enable debug logging | - |
+| `DEBUG`             | Enable debug logging   | -                  |
 
 ## Development
 

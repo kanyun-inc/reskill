@@ -8,6 +8,7 @@ import { logger } from '../utils/logger.js';
 import { checkForUpdate, formatUpdateMessage } from '../utils/update-notifier.js';
 import {
   completionCommand,
+  doctorCommand,
   infoCommand,
   initCommand,
   installCommand,
@@ -43,6 +44,7 @@ program.addCommand(updateCommand);
 program.addCommand(outdatedCommand);
 program.addCommand(uninstallCommand);
 program.addCommand(completionCommand);
+program.addCommand(doctorCommand);
 
 // Start update check in background (non-blocking)
 const updateCheckPromise = checkForUpdate(packageJson.name, packageJson.version);
