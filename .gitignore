@@ -29,9 +29,9 @@ npm-debug.log*
 .skills/
 .reskill-cache/
 
-# Lock files (keep package-lock if using npm)
-# pnpm-lock.yaml
-# yarn.lock
+# Lock files (using pnpm)
+package-lock.json
+yarn.lock
 
 # Agent skills directories (created during install)
 .agents/
