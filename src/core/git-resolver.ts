@@ -1,13 +1,34 @@
 import * as semver from 'semver';
 import type { ParsedSkillRef, ParsedVersion } from '../types/index.js';
 import {
-  buildRepoUrl,
+  buildRepoUrl as buildRepoUrlFromGit,
   getDefaultBranch,
   getLatestTag,
   getRemoteTags,
   isGitUrl,
   parseGitUrl,
 } from '../utils/git.js';
+
+/**
+ * Registry resolver function type
+ *
+ * Takes a registry name and returns the corresponding base URL.
+ * Used to support custom registries defined in skills.json.
+ */
+export type RegistryResolver = (registryName: string) => string;
+
+/**
+ * GitResolver options
+ */
+export interface GitResolverOptions {
+  /**
+   * Custom registry resolver function
+   *
+   * If provided, this function will be used to resolve registry names to URLs.
+   * This enables support for custom registries defined in skills.json.
+   */
+  registryResolver?: RegistryResolver;
+}
 
 /**
  * GitResolver - Parse skill references and versions
@@ -28,6 +49,11 @@ import {
  */
 export class GitResolver {
   private readonly defaultRegistry = 'github';
+  private readonly registryResolver?: RegistryResolver;
+
+  constructor(options?: GitResolverOptions) {
+    this.registryResolver = options?.registryResolver;
+  }
 
   /**
    * Parse skill reference string
@@ -223,13 +249,26 @@ export class GitResolver {
    *
    * If parsed contains gitUrl, return it directly;
    * Otherwise build HTTPS URL from registry and owner/repo
+   *
+   * Resolution order for registry URLs:
+   * 1. If gitUrl is present, return it directly
+   * 2. Use custom registryResolver if provided (supports skills.json registries)
+   * 3. Fall back to default registry handling (github, gitlab, or https://{registry})
    */
   buildRepoUrl(parsed: ParsedSkillRef): string {
     // If has complete Git URL, return directly
     if (parsed.gitUrl) {
       return parsed.gitUrl;
     }
-    return buildRepoUrl(parsed.registry, `${parsed.owner}/${parsed.repo}`);
+
+    // Use custom registry resolver if available
+    if (this.registryResolver) {
+      const baseUrl = this.registryResolver(parsed.registry);
+      return `${baseUrl}/${parsed.owner}/${parsed.repo}`;
+    }
+
+    // Fall back to default handling
+    return buildRepoUrlFromGit(parsed.registry, `${parsed.owner}/${parsed.repo}`);
   }
 
   /**

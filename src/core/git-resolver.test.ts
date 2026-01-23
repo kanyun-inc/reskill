@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GitResolver } from './git-resolver.js';
 
 describe('GitResolver', () => {
-  const resolver = new GitResolver('github');
+  const resolver = new GitResolver();
 
   describe('parseRef', () => {
     it('should parse simple owner/repo', () => {
@@ -147,6 +147,82 @@ describe('GitResolver', () => {
     it('should return gitUrl directly when present', () => {
       const parsed = resolver.parseRef('git@github.com:user/repo.git');
       expect(resolver.buildRepoUrl(parsed)).toBe('git@github.com:user/repo.git');
+    });
+
+    describe('with custom registry resolver', () => {
+      it('should use custom registry resolver for known registries', () => {
+        const customResolver = new GitResolver({
+          registryResolver: (name) => {
+            const registries: Record<string, string> = {
+              internal: 'https://gitlab.company.com',
+              private: 'https://git.internal.io',
+            };
+            return registries[name] || `https://${name}`;
+          },
+        });
+
+        // Test custom "internal" registry
+        const parsed1 = customResolver.parseRef('internal:team/tool');
+        expect(customResolver.buildRepoUrl(parsed1)).toBe('https://gitlab.company.com/team/tool');
+
+        // Test custom "private" registry
+        const parsed2 = customResolver.parseRef('private:org/skill@v1.0.0');
+        expect(customResolver.buildRepoUrl(parsed2)).toBe('https://git.internal.io/org/skill');
+      });
+
+      it('should use custom registry resolver for well-known registries', () => {
+        const customResolver = new GitResolver({
+          registryResolver: (name) => {
+            // Custom resolver that overrides github to use enterprise
+            if (name === 'github') {
+              return 'https://github.enterprise.com';
+            }
+            return `https://${name}`;
+          },
+        });
+
+        const parsed = customResolver.parseRef('user/repo');
+        expect(customResolver.buildRepoUrl(parsed)).toBe('https://github.enterprise.com/user/repo');
+      });
+
+      it('should not use registry resolver when gitUrl is present', () => {
+        const customResolver = new GitResolver({
+          registryResolver: () => 'https://should-not-be-used.com',
+        });
+
+        const parsed = customResolver.parseRef('git@github.com:user/repo.git');
+        expect(customResolver.buildRepoUrl(parsed)).toBe('git@github.com:user/repo.git');
+      });
+
+      it('should support skills.json style registry configuration', () => {
+        // Simulate skills.json registries configuration
+        const skillsJsonRegistries: Record<string, string> = {
+          internal: 'https://gitlab.company.com',
+        };
+
+        const customResolver = new GitResolver({
+          registryResolver: (name) => {
+            // Check custom registries first
+            if (skillsJsonRegistries[name]) {
+              return skillsJsonRegistries[name];
+            }
+            // Default well-known registries
+            const defaults: Record<string, string> = {
+              github: 'https://github.com',
+              gitlab: 'https://gitlab.com',
+            };
+            return defaults[name] || `https://${name}`;
+          },
+        });
+
+        // Test reference from skills.json: "internal:team/tool@latest"
+        const parsed = customResolver.parseRef('internal:team/tool@latest');
+        expect(parsed.registry).toBe('internal');
+        expect(parsed.owner).toBe('team');
+        expect(parsed.repo).toBe('tool');
+        expect(parsed.version).toBe('latest');
+        expect(customResolver.buildRepoUrl(parsed)).toBe('https://gitlab.company.com/team/tool');
+      });
     });
   });
 

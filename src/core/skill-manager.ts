@@ -56,7 +56,10 @@ export class SkillManager {
     this.config = new ConfigLoader(this.projectRoot);
     this.lockManager = new LockManager(this.projectRoot);
     this.cache = new CacheManager();
-    this.resolver = new GitResolver();
+    // Pass registry resolver to GitResolver to support custom registries from skills.json
+    this.resolver = new GitResolver({
+      registryResolver: (registryName: string) => this.config.getRegistryUrl(registryName),
+    });
   }
 
   /**
