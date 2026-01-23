@@ -82,133 +82,19 @@ logger.error(`Failed to install ${name}: ${error.message}`);
 
 ## Testing Requirements
 
-### Test Coverage Policy
+> **See `.cursor/rules/testing.mdc` for detailed testing guidelines**
 
-- **Unit tests are REQUIRED for all new code**
-- Tests must be created alongside source files
-- Minimum coverage target: 70% for new code
-- Test files use `.test.ts` suffix in the same directory as source
+### Quick Reference
 
-### Test File Structure
+- **Unit tests** are REQUIRED for all new code (`.test.ts` suffix, same directory)
+- **Integration tests** are REQUIRED for CLI commands (`src/cli/commands/__integration__/`)
+- **Bug fixes** MUST follow TDD: write failing test first, then fix
 
-```
-src/core/
-├── skill-manager.ts          # Source file
-├── skill-manager.test.ts     # Test file (REQUIRED)
-├── config-loader.ts
-├── config-loader.test.ts     # Test file (REQUIRED)
-```
-
-### Test Writing Guidelines
-
-- Use Vitest's describe/it pattern
-- Use meaningful test descriptions in English
-- Set up and tear down test fixtures properly
-- Mock external dependencies (fs, network)
-- Use temporary directories for file system tests
-
-```typescript
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
-
-describe('SkillManager', () => {
-  let tempDir: string;
-  
-  beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-test-'));
-  });
-  
-  afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  });
-  
-  describe('install', () => {
-    it('should install skill to correct directory', async () => {
-      // Test implementation
-    });
-    
-    it('should throw error when skill not found', async () => {
-      await expect(manager.install('invalid')).rejects.toThrow();
-    });
-  });
-});
-```
-
-### Test Categories
-
-1. **Unit Tests** - Test individual functions/classes in isolation (Vitest)
-2. **Integration Tests** - Test built CLI end-to-end behavior (shell script)
-3. **Edge Cases** - Test error conditions and boundary values
-
-### Integration Testing Strategy
-
-**IMPORTANT:** For CLI commands, always verify behavior with integration tests after unit tests pass.
-
-Integration tests run the **built CLI** (`node dist/cli/index.js`) against a real file system to ensure:
-- Command arguments and options work correctly
-- Output messages are correct
-- Files are created/modified as expected
-- Exit codes are appropriate
-
-**Run integration tests:**
 ```bash
-pnpm test:integration
+pnpm test              # Unit tests (watch mode)
+pnpm test:run          # Unit tests (single run)
+pnpm test:integration  # Integration tests (build + run)
 ```
-
-**Add new integration tests in `scripts/integration-test.sh`:**
-```bash
-# Test a new command
-run_test "command description" "$CLI your-command args" 0
-run_test_output "check output" "$CLI your-command" "expected output"
-check_file_exists "file created" "$TEMP_DIR/expected-file.json"
-check_json_field "json field value" "$TEMP_DIR/file.json" ".field.path" "expected"
-```
-
-**When to add integration tests:**
-- New CLI command added
-- Command options/arguments changed
-- Output format changed
-- File creation/modification logic changed
-
-**Manual verification pattern:**
-```bash
-# Always verify changes manually before committing
-pnpm build
-node dist/cli/index.js your-command --options
-```
-
-### Bug Fix Protocol (TDD Approach)
-
-All bug fixes MUST follow this protocol:
-
-1. **Reproduce First** - Write a failing test that reproduces the bug before writing any fix code
-2. **Fix the Bug** - Implement the minimal fix to make the test pass
-3. **Verify with Test** - Ensure the test passes after the fix
-4. **Regression Prevention** - The test serves as a regression guard for future changes
-
-```typescript
-// Example: Bug fix test pattern
-describe('SkillManager', () => {
-  describe('bug fixes', () => {
-    it('should list skills from canonical directory (.agents/skills/)', () => {
-      // This test was added to reproduce issue #XXX
-      // Bug: list() was checking .skills/ instead of .agents/skills/
-      
-      // Setup: Create skill in canonical location
-      // Action: Call list()
-      // Assert: Skill should be found
-    });
-  });
-});
-```
-
-**Why this matters:**
-- Ensures the bug is actually fixed, not just the symptom
-- Prevents the same bug from reappearing
-- Documents the bug and its fix in code
-- Provides confidence when refactoring
 
 ## Project Architecture
 
@@ -247,6 +133,21 @@ src/
 - **Installer:** Handle multi-agent installation (symlink/copy)
 - **AgentRegistry:** Define supported agents and their paths
 
+## CLI Development Workflow
+
+**All CLI changes MUST follow the Spec-Driven TDD workflow defined in `docs/cli-spec.md`:**
+
+```
+1. SPEC      → Modify docs/cli-spec.md
+2. REVIEW    → PR review for spec changes
+3. TEST      → Write failing tests (integration + unit)
+4. CODE      → Implement minimal code to pass tests
+5. REFACTOR  → Improve code quality
+6. VERIFY    → pnpm test:run && pnpm test:integration
+```
+
+**Key principle:** Never write implementation code before writing tests. The spec defines "what", tests verify "what", code implements "how".
+
 ## CLI Command Pattern
 
 Each command follows this structure:
@@ -277,28 +178,9 @@ export const myCommand = new Command('my-command')
   });
 ```
 
-### CLI Command Testing Checklist
+### CLI Command Testing
 
-When creating or modifying a CLI command, ensure:
-
-1. **Unit tests** (`src/cli/commands/my-command.test.ts`):
-   - Command name and description
-   - Options and arguments definition
-   - Logger output verification
-   - Error handling
-
-2. **Integration tests** (`scripts/integration-test.sh`):
-   - Actual command execution
-   - Output verification
-   - File creation/modification
-   - Exit codes
-
-3. **Manual verification**:
-   ```bash
-   pnpm build
-   node dist/cli/index.js my-command --help
-   node dist/cli/index.js my-command [args]
-   ```
+When creating or modifying a CLI command, add both unit tests and integration tests. See `.cursor/rules/testing.mdc` for detailed patterns and checklists.
 
 ## Git Commit Guidelines
 
@@ -364,21 +246,21 @@ Brief English summary
 
 ---
 
-简短的中文摘要
+Brief Chinese summary
 
-**主要变更：**
-- 中文变更描述
-- 另一个变更的中文描述
+**Changes:**
+- Chinese change description
+- Another change in Chinese
 
-**问题修复：**
-- 中文问题修复描述
+**Bug Fixes:**
+- Chinese bug fix description
 ```
 
 ### Changeset Content Guidelines
 
 1. **Title**: Brief summary in both English and Chinese (English first, then Chinese)
 2. **Structure**: All English content first, then all Chinese content, separated by `---`
-3. **Sections**: Use English headers (`**Changes:**`, `**Bug Fixes:**`) in English section, Chinese headers (`**主要变更：**`, `**问题修复：**`) in Chinese section
+3. **Sections**: Use English headers in English section, Chinese headers in Chinese section
 4. **Organization**: Organize by category (Changes, Bug Fixes, Backward Compatibility, etc.) in both sections
 
 ### Release Workflow
@@ -391,11 +273,11 @@ Brief English summary
 
 ### Version Bump Types
 
-| Type | Version Change | Use Case | 使用场景 |
-|------|----------------|----------|----------|
-| `patch` | 0.1.0 → 0.1.1 | Bug fixes, documentation updates | Bug 修复，文档更新 |
-| `minor` | 0.1.0 → 0.2.0 | New features (backward compatible) | 新功能（向后兼容） |
-| `major` | 0.1.0 → 1.0.0 | Breaking changes | 破坏性变更 |
+| Type | Version Change | Use Case |
+|------|----------------|----------|
+| `patch` | 0.1.0 → 0.1.1 | Bug fixes, documentation updates |
+| `minor` | 0.1.0 → 0.2.0 | New features (backward compatible) |
+| `major` | 0.1.0 → 1.0.0 | Breaking changes |
 
 ### Common Commands
 
@@ -472,14 +354,11 @@ node dist/cli/index.js init -y
 node dist/cli/index.js list
 ```
 
-### Complete Test Workflow
+### Pre-commit Verification
 
-For any CLI-related changes, follow this workflow:
-
-1. **Write/update unit tests** - `pnpm test:run`
-2. **Build the project** - `pnpm build`
-3. **Run integration tests** - `pnpm test:integration`
-4. **Manual verification** - `node dist/cli/index.js <command>`
+```bash
+pnpm test:run && pnpm test:integration && pnpm typecheck && pnpm lint
+```
 
 ## File Operations
 

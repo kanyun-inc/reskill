@@ -1,0 +1,351 @@
+---
+alwaysApply: true
+---
+
+# Testing Rules
+
+## Testing Philosophy
+
+reskill uses a **two-layer testing strategy** to ensure code quality and functionality:
+
+| Test Type | Purpose | Frequency |
+|-----------|---------|-----------|
+| **Unit Tests** | Ensure code quality and logic correctness | Run continuously during development |
+| **Integration Tests** | Ensure CLI API usability | Must pass before commit |
+
+**Core Principle: Integration tests are the ultimate guarantee of functionality.** Unit tests may all pass, but if integration tests fail, users will encounter issues in actual use.
+
+## Spec-Driven TDD Workflow
+
+All CLI feature development must follow the **Spec-Driven TDD** workflow (see `docs/cli-spec.md`):
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  1. SPEC      Modify docs/cli-spec.md to define expected behavior│
+│  2. REVIEW    Review spec changes                                │
+│  3. TEST      Write failing tests based on spec (RED)            │
+│  4. CODE      Write minimal code to pass tests (GREEN)           │
+│  5. REFACTOR  Refactor and optimize, keep tests passing          │
+│  6. VERIFY    pnpm test:run && pnpm test:integration             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Benefits of Test-First Approach
+
+| Benefit | Description |
+|---------|-------------|
+| **Spec as Documentation** | `docs/cli-spec.md` is the single source of truth for command behavior |
+| **Tests as Specification** | Test code verifies correct implementation of spec |
+| **Prevent Regression** | Any breaking changes will be caught by tests |
+| **Design-Driven** | Think about interfaces first, then implement details |
+
+### Example: Adding `--dry-run` Option
+
+```bash
+# Step 1: Modify docs/cli-spec.md, add --dry-run option definition
+# Step 2: PR Review spec changes
+# Step 3: Write failing tests
+#   - src/cli/commands/__integration__/install-*.test.ts (integration)
+#   - src/cli/commands/install.test.ts (unit)
+# Step 4: Implement --dry-run logic
+# Step 5: Refactor code
+# Step 6: Verify all tests pass
+```
+
+## Integration Tests
+
+### Why Integration Tests Matter
+
+Integration tests verify **actual user behavior**:
+
+```bash
+# These are the commands users actually run
+reskill init -y
+reskill install github:user/skill@v1.0.0
+reskill list
+reskill uninstall skill-name -y
+```
+
+Unit tests may cover all internal functions, but cannot guarantee:
+- CLI argument parsing is correct
+- Command output format meets expectations
+- File creation/modification behavior is correct
+- Exit codes conform to specification
+
+### Integration Test Location
+
+```
+src/cli/commands/__integration__/
+├── helpers.ts              # Shared test utilities
+├── basic.test.ts           # --version, --help, init, list, info, outdated
+├── install-symlink.test.ts # install with symlink mode
+├── install-copy.test.ts    # install with copy mode
+├── install-global.test.ts  # install -g (global)
+├── uninstall.test.ts       # uninstall command
+└── update.test.ts          # update command
+```
+
+### Integration Test Helpers
+
+Use shared utilities from `helpers.ts`:
+
+```typescript
+import {
+  runCli,              // Execute CLI command
+  getOutput,           // Get combined stdout + stderr
+  createTempDir,       // Create isolated temp directory
+  removeTempDir,       // Clean up temp directory
+  createMockSkill,     // Create mock skill directory
+  createLocalGitRepo,  // Create local git repo for testing
+  setupSkillsJson,     // Setup skills.json config
+  readSkillsJson,      // Read skills.json
+  pathExists,          // Check path exists
+  isSymlink,           // Check if path is symlink
+} from './helpers.js';
+```
+
+### Integration Test Pattern
+
+```typescript
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  createTempDir,
+  removeTempDir,
+  runCli,
+  pathExists,
+} from './helpers.js';
+
+describe('CLI Integration: command-name', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+    runCli('init -y', tempDir);  // Setup project
+  });
+
+  afterEach(() => {
+    removeTempDir(tempDir);  // Clean up
+  });
+
+  describe('basic functionality', () => {
+    it('should perform expected action', () => {
+      const { stdout, exitCode } = runCli('command args', tempDir);
+      
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain('expected output');
+    });
+  });
+
+  describe('error handling', () => {
+    it('should handle invalid input gracefully', () => {
+      const { exitCode, stderr } = runCli('command invalid', tempDir);
+      
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain('error message');
+    });
+  });
+});
+```
+
+### When to Add Integration Tests
+
+**MUST add integration tests when:**
+
+1. **Adding new CLI command** - Test all options and arguments
+2. **Modifying command behavior** - Verify output and side effects
+3. **Changing file operations** - Verify files are created/modified correctly
+4. **Fixing user-reported bugs** - Reproduce the issue at CLI level
+
+**Integration test checklist for new commands:**
+
+- [ ] `--help` shows correct usage
+- [ ] Success case returns exit code 0
+- [ ] Error case returns exit code 1
+- [ ] Output messages are correct
+- [ ] Files are created/modified as expected
+- [ ] Works with different options combinations
+
+### Running Integration Tests
+
+```bash
+# Build first, then run integration tests
+pnpm test:integration
+
+# Or manually
+pnpm build
+pnpm vitest run --config vitest.integration.config.ts
+```
+
+## Unit Tests
+
+### Purpose
+
+Unit tests ensure **internal code logic** correctness:
+
+- Function input/output meets expectations
+- Edge cases are handled correctly
+- Error conditions are properly caught
+- Type safety is ensured
+
+### Unit Test Location
+
+Unit tests are placed in the same directory as source files:
+
+```
+src/core/
+├── skill-manager.ts
+├── skill-manager.test.ts     # Unit test for skill-manager
+├── config-loader.ts
+├── config-loader.test.ts     # Unit test for config-loader
+```
+
+### Unit Test Pattern
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+
+describe('ModuleName', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  describe('methodName', () => {
+    it('should return expected value for valid input', () => {
+      // Arrange
+      const input = 'valid-input';
+      
+      // Act
+      const result = methodName(input);
+      
+      // Assert
+      expect(result).toBe('expected');
+    });
+
+    it('should throw error for invalid input', () => {
+      expect(() => methodName('invalid')).toThrow('error message');
+    });
+  });
+});
+```
+
+### Running Unit Tests
+
+```bash
+# Watch mode (development)
+pnpm test
+
+# Single run
+pnpm test:run
+
+# With coverage
+pnpm test:coverage
+```
+
+## Bug Fix Protocol (TDD)
+
+All bug fixes **MUST** follow this protocol:
+
+### Step 1: Reproduce with Test
+
+Write a **failing test** that reproduces the bug:
+
+```typescript
+describe('bug fixes', () => {
+  it('should handle edge case X (fixes #123)', () => {
+    // This test reproduces the reported bug
+    // It should FAIL before the fix is applied
+    
+    const result = functionWithBug('edge-case-input');
+    expect(result).toBe('correct-output');
+  });
+});
+```
+
+### Step 2: Fix the Bug
+
+Implement the **minimal fix** to make the test pass.
+
+### Step 3: Verify
+
+- Unit test passes
+- Integration test passes (if CLI-related)
+- No regression in other tests
+
+### Step 4: Document
+
+The test itself serves as documentation:
+
+```typescript
+it('should list skills from .agents/skills/ directory (fixes #42)', () => {
+  // Bug: list() was checking .skills/ instead of .agents/skills/
+  // Fix: Updated getCanonicalSkillsDir() to return correct path
+});
+```
+
+## Test Coverage Guidelines
+
+### Coverage Targets
+
+| Category | Target | Rationale |
+|----------|--------|-----------|
+| Core modules (`src/core/`) | 80%+ | Business logic must be well-tested |
+| CLI commands (`src/cli/`) | 70%+ | Commands have integration test coverage |
+| Utilities (`src/utils/`) | 90%+ | Utilities are foundational |
+
+### What to Test
+
+**Always test:**
+- Public API functions
+- Error handling paths
+- Edge cases (empty input, null, undefined)
+- Boundary conditions
+
+**Skip testing:**
+- Private implementation details
+- Simple getters/setters
+- Third-party library wrappers (mock instead)
+
+## Test Commands Reference
+
+```bash
+# Unit tests
+pnpm test              # Watch mode
+pnpm test:run          # Single run
+pnpm test:coverage     # With coverage report
+
+# Integration tests
+pnpm test:integration  # Build + run integration tests
+
+# All tests
+pnpm test:run && pnpm test:integration
+
+# Specific test file
+pnpm vitest run src/core/skill-manager.test.ts
+pnpm vitest run src/cli/commands/__integration__/basic.test.ts
+```
+
+## Pre-commit Checklist
+
+Before committing changes:
+
+1. [ ] `pnpm test:run` - All unit tests pass
+2. [ ] `pnpm test:integration` - All integration tests pass
+3. [ ] `pnpm typecheck` - No type errors
+4. [ ] `pnpm lint` - No linting errors
+
+For CLI-related changes, also verify manually:
+
+```bash
+pnpm build
+node dist/cli/index.js --help
+node dist/cli/index.js <your-command> <args>
+```

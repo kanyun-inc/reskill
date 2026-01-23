@@ -3,56 +3,6 @@
 > This document defines the expected behavior of all CLI commands.
 > All command changes should start by modifying this spec first.
 
-## Development Workflow
-
-Follow this **Spec-Driven TDD** workflow for all CLI changes:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  1. SPEC          Modify this file (docs/cli-spec.md)                   │
-│       ↓                                                                 │
-│  2. REVIEW        PR review for spec changes                            │
-│       ↓                                                                 │
-│  3. TEST (RED)    Write failing tests based on spec                     │
-│       ↓           - Integration test for CLI behavior                   │
-│       ↓           - Unit test for internal logic                        │
-│       ↓                                                                 │
-│  4. CODE (GREEN)  Implement minimal code to pass tests                  │
-│       ↓                                                                 │
-│  5. REFACTOR      Improve code quality, keep tests green                │
-│       ↓                                                                 │
-│  6. VERIFY        pnpm test:run && pnpm test:integration                │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### Why This Order?
-
-| Step | Purpose |
-|------|---------|
-| **Spec First** | Forces design thinking before coding |
-| **Test Before Code** | Tests become executable spec, prevent regression |
-| **Minimal Code** | Avoid over-engineering, only implement what's needed |
-
-### Example: Adding `--dry-run` to install
-
-```bash
-# 1. SPEC: Update docs/cli-spec.md
-#    Add --dry-run option to install command section
-
-# 2. REVIEW: Create PR for spec change, get feedback
-
-# 3. TEST (RED): Write failing tests
-#    - src/cli/commands/__integration__/install-*.test.ts
-#    - src/cli/commands/install.test.ts
-
-# 4. CODE (GREEN): Implement --dry-run in install.ts
-
-# 5. REFACTOR: Clean up, extract helpers if needed
-
-# 6. VERIFY
-pnpm test:run && pnpm test:integration
-```
-
 ## Overview
 
 | Command | Alias | Description |
