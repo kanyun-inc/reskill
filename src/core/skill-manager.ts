@@ -1,22 +1,22 @@
 import * as path from 'node:path';
 import type { InstalledSkill, InstallOptions, SkillJson } from '../types/index.js';
 import {
-    ensureDir,
-    exists,
-    getGlobalSkillsDir,
-    getRealPath,
-    isDirectory,
-    isSymlink,
-    listDir,
-    readJson,
-    remove,
+  ensureDir,
+  exists,
+  getGlobalSkillsDir,
+  getRealPath,
+  isDirectory,
+  isSymlink,
+  listDir,
+  readJson,
+  remove,
 } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 import {
-    agents,
-    detectInstalledAgents,
-    isValidAgentType,
-    type AgentType,
+  agents,
+  detectInstalledAgents,
+  isValidAgentType,
+  type AgentType,
 } from './agent-registry.js';
 import { CacheManager } from './cache-manager.js';
 import { ConfigLoader } from './config-loader.js';
@@ -637,6 +637,17 @@ export class SkillManager {
         // Use ref for comparison (git tag/branch/commit), fallback to version for backward compatibility
         const currentRef = locked?.ref || locked?.version || 'unknown';
         const currentVersion = locked?.version || 'unknown';
+
+        // HTTP sources don't support version checking
+        if (this.isHttpSource(ref)) {
+          results.push({
+            name,
+            current: currentVersion,
+            latest: 'n/a (HTTP source)',
+            updateAvailable: false,
+          });
+          continue;
+        }
 
         // Parse latest version
         const parsed = this.resolver.parseRef(ref);
