@@ -8,6 +8,7 @@ import { Command } from 'commander';
 import { isValidAgentType } from '../../core/agent-registry.js';
 import { ConfigLoader } from '../../core/config-loader.js';
 import { GitResolver } from '../../core/git-resolver.js';
+import { HttpResolver } from '../../core/http-resolver.js';
 import { LockManager } from '../../core/lock-manager.js';
 import { SkillManager } from '../../core/skill-manager.js';
 import { logger } from '../../utils/logger.js';
@@ -472,7 +473,8 @@ export function checkSkillRefs(cwd: string): CheckResult[] {
 
   try {
     const skills = configLoader.getSkills();
-    const resolver = new GitResolver();
+    const gitResolver = new GitResolver();
+    const httpResolver = new HttpResolver();
 
     for (const [name, ref] of Object.entries(skills)) {
       // Check for dangerous skill names
@@ -486,15 +488,25 @@ export function checkSkillRefs(cwd: string): CheckResult[] {
         continue;
       }
 
-      // Try to parse the reference
+      // Try to parse the reference based on its type
+      const isHttp = HttpResolver.isHttpUrl(ref);
       try {
-        resolver.parseRef(ref);
+        if (isHttp) {
+          // Validate HTTP/OSS/S3 URL
+          httpResolver.parseRef(ref);
+        } else {
+          // Validate Git reference
+          gitResolver.parseRef(ref);
+        }
       } catch (error) {
+        const hint = isHttp
+          ? 'Format: https://host/path/skill.tar.gz or oss://bucket/path/skill.tar.gz'
+          : 'Format: registry:owner/repo@version or owner/repo@version';
         results.push({
           name: 'Invalid skill ref',
           status: 'error',
           message: `"${name}": ${(error as Error).message}`,
-          hint: 'Format: registry:owner/repo@version or owner/repo@version',
+          hint,
         });
       }
     }
@@ -518,12 +530,17 @@ export function checkMonorepoVersions(cwd: string): CheckResult[] {
 
   try {
     const skills = configLoader.getSkills();
-    const resolver = new GitResolver();
+    const gitResolver = new GitResolver();
     const repoVersions = new Map<string, Map<string, string[]>>();
 
     for (const [name, ref] of Object.entries(skills)) {
       try {
-        const parsed = resolver.parseRef(ref);
+        // Skip HTTP sources (no monorepo support)
+        if (HttpResolver.isHttpUrl(ref)) {
+          continue;
+        }
+
+        const parsed = gitResolver.parseRef(ref);
 
         // Only check skills with subPath (monorepo)
         if (!parsed.subPath) {

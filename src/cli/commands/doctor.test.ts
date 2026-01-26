@@ -911,6 +911,52 @@ describe('checkSkillRefs', () => {
     expect(results[0].status).toBe('error');
     expect(results[0].name).toBe('Invalid skill ref');
   });
+
+  it('should return empty array for valid HTTP skill refs', () => {
+    writeFileSync(
+      join(testDir, 'skills.json'),
+      JSON.stringify({
+        skills: {
+          'http-skill': 'https://example.com/skills/my-skill.tar.gz',
+          'oss-skill': 'oss://bucket/path/skill.tar.gz',
+          's3-skill': 's3://bucket/skills/another.zip',
+        },
+      }),
+    );
+    const results = checkSkillRefs(testDir);
+    expect(results).toEqual([]);
+  });
+
+  it('should return empty array for mixed Git and HTTP skill refs', () => {
+    writeFileSync(
+      join(testDir, 'skills.json'),
+      JSON.stringify({
+        skills: {
+          'git-skill': 'github:user/repo@v1.0.0',
+          'http-skill': 'https://example.com/skills/my-skill.tar.gz',
+          'oss-skill': 'oss://bucket/path/skill.tar.gz',
+        },
+      }),
+    );
+    const results = checkSkillRefs(testDir);
+    expect(results).toEqual([]);
+  });
+
+  it('should provide HTTP-specific hint for invalid HTTP refs', () => {
+    writeFileSync(
+      join(testDir, 'skills.json'),
+      JSON.stringify({
+        skills: {
+          'bad-http-skill': 'https://',
+        },
+      }),
+    );
+    const results = checkSkillRefs(testDir);
+    expect(results.length).toBe(1);
+    expect(results[0].status).toBe('error');
+    expect(results[0].hint).toContain('https://');
+    expect(results[0].hint).toContain('oss://');
+  });
 });
 
 describe('checkMonorepoVersions', () => {
@@ -994,6 +1040,43 @@ describe('checkMonorepoVersions', () => {
     expect(results[0].message).toContain('v1.0.0');
     expect(results[0].message).toContain('v2.0.0');
     expect(results[0].message).toContain('v3.0.0');
+  });
+
+  it('should skip HTTP sources in monorepo version check', () => {
+    writeFileSync(
+      join(testDir, 'skills.json'),
+      JSON.stringify({
+        skills: {
+          'http-skill-a': 'https://example.com/skills/a.tar.gz',
+          'http-skill-b': 'https://example.com/skills/b.tar.gz',
+          'oss-skill': 'oss://bucket/skills/c.tar.gz',
+        },
+      }),
+    );
+    const results = checkMonorepoVersions(testDir);
+    // HTTP sources should be skipped, no warnings
+    expect(results).toEqual([]);
+  });
+
+  it('should handle mixed Git and HTTP sources', () => {
+    writeFileSync(
+      join(testDir, 'skills.json'),
+      JSON.stringify({
+        skills: {
+          'skill-a': 'github:org/monorepo/skills/skill-a@v1.0.0',
+          'skill-b': 'github:org/monorepo/skills/skill-b@v2.0.0',
+          'http-skill': 'https://example.com/skills/skill.tar.gz',
+        },
+      }),
+    );
+    const results = checkMonorepoVersions(testDir);
+    // Should only warn about Git monorepo version mismatch
+    expect(results.length).toBe(1);
+    expect(results[0].status).toBe('warn');
+    expect(results[0].message).toContain('v1.0.0');
+    expect(results[0].message).toContain('v2.0.0');
+    // Should not mention HTTP skill
+    expect(results[0].message).not.toContain('http-skill');
   });
 });
 
