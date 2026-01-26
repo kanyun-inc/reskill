@@ -52,19 +52,48 @@ npx reskill@latest <command>  # 或直接使用 npx
 | `doctor`             | 诊断环境并检查问题   |
 | `completion install` | 安装 Shell Tab 补全  |
 
-运行 `reskill <command> --help` 查看详细选项。
+### 常用选项
+
+| 选项 | 适用命令 | 说明 |
+| ---- | ------- | ---- |
+| `--no-save` | `install` | 安装时不保存到 `skills.json`（用于个人技能） |
+| `-g, --global` | `install`, `uninstall`, `list` | 全局安装/管理技能（用户目录） |
+| `-a, --agent <agents...>` | `install` | 指定目标 Agent（如 `cursor`, `claude-code`） |
+| `--mode <mode>` | `install` | 安装模式：`symlink`（默认）或 `copy` |
+
+运行 `reskill <command> --help` 查看完整选项和详细用法。
 
 ## 源格式
 
 ```bash
-github:user/skill@v1.0.0                    # GitHub 简写
-gitlab:group/skill@latest                   # GitLab 简写
-gitlab.company.com:team/skill@v1.0.0        # 自建实例
-https://github.com/user/repo/tree/main/path # 网页 URL（支持子路径）
+# 基本格式
+npx reskill@latest install github:user/skill@v1.0.0
+npx reskill@latest install gitlab:group/skill@latest
+npx reskill@latest install gitlab.company.com:team/skill@v1.0.0
+npx reskill@latest install https://github.com/user/repo/tree/main/path
 
 # 一次安装多个 skills
-reskill install github:user/skill1 github:user/skill2@v1.0.0
+npx reskill@latest install github:user/skill1 github:user/skill2@v1.0.0
 ```
+
+### Monorepo 支持
+
+对于包含多个技能的仓库（monorepo），可以指定技能目录的路径：
+
+```bash
+# 简写格式带子路径
+npx reskill@latest install github:org/monorepo/skills/planning@v1.0.0
+npx reskill@latest install gitlab:company/skills/frontend/components@latest
+
+# URL 格式带子路径
+npx reskill@latest install https://github.com/org/monorepo.git/skills/planning@v1.0.0
+npx reskill@latest install git@gitlab.company.com:team/skills.git/backend/apis@v2.0.0
+
+# GitHub 网页 URL 自动提取子路径
+npx reskill@latest install https://github.com/org/monorepo/tree/main/skills/planning
+```
+
+**要求**：指定的目录必须包含符合 [Agent Skills 规范](https://agentskills.io) 的有效 `SKILL.md` 文件。
 
 ## 版本规范
 
