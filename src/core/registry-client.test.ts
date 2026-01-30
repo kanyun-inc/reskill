@@ -173,12 +173,8 @@ describe('RegistryClient', () => {
 
       const mockResponse = {
         success: true,
-        publisher: {
-          id: 'pub_123',
-          handle: 'testuser',
-          email: 'test@example.com',
-          email_verified: true,
-          created_at: '2024-01-01T00:00:00Z',
+        user: {
+          id: 'testuser',
         },
       };
 
@@ -215,12 +211,8 @@ describe('RegistryClient', () => {
         json: () =>
           Promise.resolve({
             success: true,
-            publisher: {
-              id: 'pub_123',
-              handle: 'testuser',
-              email: 'test@example.com',
-              email_verified: true,
-              created_at: '2024-01-01',
+            user: {
+              id: 'testuser',
             },
           }),
       });

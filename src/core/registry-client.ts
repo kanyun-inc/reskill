@@ -68,12 +68,8 @@ export interface PublishResponse {
 export interface WhoamiResponse {
   success: boolean;
   error?: string;
-  publisher?: {
+  user?: {
     id: string;
-    handle: string;
-    email: string;
-    email_verified: boolean;
-    created_at: string;
   };
 }
 

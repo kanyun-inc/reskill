@@ -4,8 +4,8 @@
  * Logs in to the registry and stores the token in ~/.reskillrc
  */
 
-import { createInterface } from 'node:readline';
 import { Command } from 'commander';
+import { createInterface } from 'node:readline';
 import { AuthManager } from '../../core/auth-manager.js';
 import { RegistryClient, RegistryError } from '../../core/registry-client.js';
 import { logger } from '../../utils/logger.js';
@@ -171,18 +171,17 @@ async function loginWithToken(token: string, registry: string, authManager: Auth
   try {
     const response = await client.whoami();
 
-    if (!response.success || !response.publisher) {
+    if (!response.success || !response.user) {
       logger.error(response.error || 'Token verification failed');
       process.exit(1);
     }
 
-    // Save token with handle
-    authManager.setToken(token, registry, response.publisher.email, response.publisher.handle);
+    // Save token with handle (using user.id as handle)
+    authManager.setToken(token, registry, undefined, response.user.id);
 
     logger.log('✓ Token verified and saved!');
     logger.newline();
-    logger.log(`  Handle: @${response.publisher.handle}`);
-    logger.log(`  Email: ${response.publisher.email}`);
+    logger.log(`  Handle: @${response.user.id}`);
     logger.log(`  Registry: ${registry}`);
     logger.newline();
     logger.log(`Token saved to ${authManager.getConfigPath()}`);

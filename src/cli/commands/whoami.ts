@@ -41,16 +41,14 @@ async function whoamiAction(options: WhoamiOptions): Promise<void> {
   try {
     const response = await client.whoami();
 
-    if (!response.success || !response.publisher) {
+    if (!response.success || !response.user) {
       logger.error('Failed to get user info');
       process.exit(1);
     }
 
-    const { publisher } = response;
+    const { user } = response;
 
-    logger.log(`@${publisher.handle}`);
-    logger.log(`  Email: ${publisher.email}`);
-    logger.log(`  Verified: ${publisher.email_verified ? 'Yes' : 'No'}`);
+    logger.log(`@${user.id}`);
     logger.log(`  Registry: ${registry}`);
 
   } catch (error) {
