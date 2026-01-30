@@ -17,6 +17,7 @@ import { logger } from '../../utils/logger.js';
 
 interface LoginOptions {
   registry?: string;
+  token?: string;
 }
 
 // ============================================================================
@@ -121,6 +122,12 @@ async function loginAction(options: LoginOptions): Promise<void> {
   const registry = resolveRegistry(options.registry);
   const authManager = new AuthManager();
 
+  // If token is provided directly, save it and verify
+  if (options.token) {
+    await loginWithToken(options.token, registry, authManager);
+    return;
+  }
+
   // Check if already logged in
   const existingToken = authManager.getToken(registry);
   if (existingToken) {
@@ -192,6 +199,48 @@ async function loginAction(options: LoginOptions): Promise<void> {
   }
 }
 
+/**
+ * Login with a pre-generated token (e.g., from web UI after CAS/OAuth login)
+ */
+async function loginWithToken(token: string, registry: string, authManager: AuthManager): Promise<void> {
+  logger.log(`Verifying token with ${registry}...`);
+  logger.newline();
+
+  // Verify token by calling whoami
+  const client = new RegistryClient({ registry, token });
+
+  try {
+    const response = await client.whoami();
+
+    if (!response.success || !response.publisher) {
+      logger.error(response.error || 'Token verification failed');
+      process.exit(1);
+    }
+
+    // Save token with handle
+    authManager.setToken(token, registry, response.publisher.email, response.publisher.handle);
+
+    logger.log('✓ Token verified and saved!');
+    logger.newline();
+    logger.log(`  Handle: @${response.publisher.handle}`);
+    logger.log(`  Email: ${response.publisher.email}`);
+    logger.log(`  Registry: ${registry}`);
+    logger.newline();
+    logger.log(`Token saved to ${authManager.getConfigPath()}`);
+
+  } catch (error) {
+    if (error instanceof RegistryError) {
+      logger.error(`Token verification failed: ${error.message}`);
+      if (error.statusCode === 401) {
+        logger.log('The token is invalid or expired. Please generate a new token from the web UI.');
+      }
+    } else {
+      logger.error(`Token verification failed: ${(error as Error).message}`);
+    }
+    process.exit(1);
+  }
+}
+
 // ============================================================================
 // Command Definition
 // ============================================================================
@@ -199,6 +248,7 @@ async function loginAction(options: LoginOptions): Promise<void> {
 export const loginCommand = new Command('login')
   .description('Authenticate with a reskill registry')
   .option('-r, --registry <url>', 'Registry URL (or set RESKILL_REGISTRY env var, or defaults.publishRegistry in skills.json)')
+  .option('-t, --token <token>', 'Use a pre-generated token (from web UI after CAS/OAuth login)')
   .action(loginAction);
 
 export default loginCommand;
