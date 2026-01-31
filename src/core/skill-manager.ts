@@ -416,45 +416,52 @@ export class SkillManager {
     const tempDir = path.join(this.cache.getCacheDir(), 'registry-temp', `${shortName}-${version}`);
     await ensureDir(tempDir);
 
-    // 4. Extract tarball
-    const extractedPath = await this.registryResolver.extract(tarball, tempDir);
-    logger.debug(`Extracted to ${extractedPath}`);
+    try {
+      // 4. Extract tarball
+      const extractedPath = await this.registryResolver.extract(tarball, tempDir);
+      logger.debug(`Extracted to ${extractedPath}`);
 
-    // 5. Copy to installation directory
-    ensureDir(this.getInstallDir());
+      // 5. Copy to installation directory
+      ensureDir(this.getInstallDir());
 
-    if (exists(skillPath)) {
-      remove(skillPath);
+      if (exists(skillPath)) {
+        remove(skillPath);
+      }
+
+      // Copy from extracted path to skill path
+      copyDir(extractedPath, skillPath);
+
+      // 6. Update lock file (project mode only)
+      if (!this.isGlobal) {
+        this.lockManager.lockSkill(shortName, {
+          source: `registry:${parsed.fullName}`,
+          version,
+          ref: version,
+          resolved: registryUrl,
+          commit: resolved.integrity, // Use integrity as commit-like identifier
+        });
+      }
+
+      // 7. Update skills.json (project mode only)
+      if (!this.isGlobal && save) {
+        this.config.ensureExists();
+        this.config.addSkill(shortName, ref);
+      }
+
+      const locationHint = this.isGlobal ? '(global)' : '';
+      logger.success(`Installed ${shortName}@${version} to ${skillPath} ${locationHint}`.trim());
+
+      const installed = this.getInstalledSkill(shortName);
+      if (!installed) {
+        throw new Error(`Failed to get installed skill info for ${shortName}`);
+      }
+      return installed;
+    } finally {
+      // Clean up temp directory
+      if (exists(tempDir)) {
+        remove(tempDir);
+      }
     }
-
-    // Copy from extracted path to skill path
-    copyDir(extractedPath, skillPath);
-
-    // 6. Update lock file (project mode only)
-    if (!this.isGlobal) {
-      this.lockManager.lockSkill(shortName, {
-        source: `registry:${parsed.fullName}`,
-        version,
-        ref: version,
-        resolved: registryUrl,
-        commit: resolved.integrity, // Use integrity as commit-like identifier
-      });
-    }
-
-    // 7. Update skills.json (project mode only)
-    if (!this.isGlobal && save) {
-      this.config.ensureExists();
-      this.config.addSkill(shortName, ref);
-    }
-
-    const locationHint = this.isGlobal ? '(global)' : '';
-    logger.success(`Installed ${shortName}@${version} to ${skillPath} ${locationHint}`.trim());
-
-    const installed = this.getInstalledSkill(shortName);
-    if (!installed) {
-      throw new Error(`Failed to get installed skill info for ${shortName}`);
-    }
-    return installed;
   }
 
   /**
