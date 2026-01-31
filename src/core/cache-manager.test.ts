@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -244,6 +245,143 @@ describe('CacheManager', () => {
       const cachePath = cacheManager.getSkillCachePath(parsedWithSubpath, 'v1.0.0');
       expect(cachePath).toContain('monorepo');
       expect(cachePath).toContain('v1.0.0');
+    });
+  });
+
+  describe('cache() with subPath extraction', () => {
+    let repoDir: string;
+
+    /**
+     * Helper to create a local git monorepo for testing
+     */
+    function createLocalMonorepo(skills: Array<{ name: string; version: string; subPath: string }>): string {
+      const repoPath = path.join(repoDir, 'monorepo');
+      fs.mkdirSync(repoPath, { recursive: true });
+
+      // Create root README
+      fs.writeFileSync(path.join(repoPath, 'README.md'), '# Monorepo\n');
+
+      // Create each skill
+      for (const skill of skills) {
+        const skillPath = path.join(repoPath, skill.subPath);
+        fs.mkdirSync(skillPath, { recursive: true });
+        fs.writeFileSync(
+          path.join(skillPath, 'skill.json'),
+          JSON.stringify({ name: skill.name, version: skill.version }, null, 2),
+        );
+        fs.writeFileSync(
+          path.join(skillPath, 'SKILL.md'),
+          `# ${skill.name}\n\nVersion ${skill.version}`,
+        );
+      }
+
+      // Init git repo with explicit 'main' branch
+      execSync('git init -b main', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git config user.email "test@test.com"', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git config user.name "Test"', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git add -A', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git commit -m "init"', { cwd: repoPath, stdio: 'pipe' });
+
+      return `file://${repoPath}`;
+    }
+
+    beforeEach(() => {
+      repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-repo-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(repoDir, { recursive: true, force: true });
+    });
+
+    it('should extract only subPath contents when caching from monorepo', async () => {
+      const repoUrl = createLocalMonorepo([
+        { name: 'skill-a', version: '1.0.0', subPath: 'skills/skill-a' },
+        { name: 'skill-b', version: '2.0.0', subPath: 'skills/skill-b' },
+      ]);
+
+      const parsed: ParsedSkillRef = {
+        registry: 'file',
+        owner: 'local',
+        repo: 'monorepo',
+        subPath: 'skills/skill-a',
+        raw: `${repoUrl}/skills/skill-a`,
+      };
+
+      // Use 'main' as ref (explicit default branch in helper)
+      const result = await cacheManager.cache(repoUrl, parsed, 'main', 'v1.0.0');
+
+      // Verify only skill-a contents are cached
+      expect(fs.existsSync(path.join(result.path, 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(result.path, 'skill.json'))).toBe(true);
+
+      // Verify root README is NOT present (it's outside subPath)
+      expect(fs.existsSync(path.join(result.path, 'README.md'))).toBe(false);
+
+      // Verify skill-b is NOT present
+      expect(fs.existsSync(path.join(result.path, 'skills', 'skill-b'))).toBe(false);
+
+      // Verify skill.json content
+      const skillJson = JSON.parse(fs.readFileSync(path.join(result.path, 'skill.json'), 'utf-8'));
+      expect(skillJson.name).toBe('skill-a');
+      expect(skillJson.version).toBe('1.0.0');
+    });
+
+    it('should throw error when subPath does not exist', async () => {
+      const repoUrl = createLocalMonorepo([
+        { name: 'skill-a', version: '1.0.0', subPath: 'skills/skill-a' },
+      ]);
+
+      const parsed: ParsedSkillRef = {
+        registry: 'file',
+        owner: 'local',
+        repo: 'monorepo',
+        subPath: 'skills/nonexistent',
+        raw: `${repoUrl}/skills/nonexistent`,
+      };
+
+      await expect(cacheManager.cache(repoUrl, parsed, 'main', 'v1.0.0'))
+        .rejects.toThrow(/not found/i);
+    });
+
+    it('should handle deeply nested subPaths', async () => {
+      const repoUrl = createLocalMonorepo([
+        { name: 'deep-skill', version: '1.0.0', subPath: 'packages/ai/skills/deep-skill' },
+      ]);
+
+      const parsed: ParsedSkillRef = {
+        registry: 'file',
+        owner: 'local',
+        repo: 'monorepo',
+        subPath: 'packages/ai/skills/deep-skill',
+        raw: `${repoUrl}/packages/ai/skills/deep-skill`,
+      };
+
+      const result = await cacheManager.cache(repoUrl, parsed, 'main', 'v1.0.0');
+
+      expect(fs.existsSync(path.join(result.path, 'SKILL.md'))).toBe(true);
+      const skillJson = JSON.parse(fs.readFileSync(path.join(result.path, 'skill.json'), 'utf-8'));
+      expect(skillJson.name).toBe('deep-skill');
+    });
+
+    it('should cache entire repo when no subPath specified', async () => {
+      const repoUrl = createLocalMonorepo([
+        { name: 'skill-a', version: '1.0.0', subPath: 'skills/skill-a' },
+      ]);
+
+      const parsed: ParsedSkillRef = {
+        registry: 'file',
+        owner: 'local',
+        repo: 'monorepo',
+        // No subPath
+        raw: repoUrl,
+      };
+
+      const result = await cacheManager.cache(repoUrl, parsed, 'main', 'v1.0.0');
+
+      // Verify root README IS present
+      expect(fs.existsSync(path.join(result.path, 'README.md'))).toBe(true);
+      // Verify skill-a IS present in its subPath
+      expect(fs.existsSync(path.join(result.path, 'skills', 'skill-a', 'SKILL.md'))).toBe(true);
     });
   });
 });

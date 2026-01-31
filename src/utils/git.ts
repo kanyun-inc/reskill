@@ -300,17 +300,18 @@ export interface ParsedGitUrl {
   repo: string;
   /** Original URL */
   url: string;
-  /** URL type: ssh, https, or git */
-  type: 'ssh' | 'https' | 'git';
+  /** URL type: ssh, https, git, or file (for local testing) */
+  type: 'ssh' | 'https' | 'git' | 'file';
 }
 
 /**
- * Check if a source string is a complete Git URL (SSH, HTTPS, or git://)
+ * Check if a source string is a complete Git URL (SSH, HTTPS, git://, or file://)
  *
  * Supported formats:
  * - SSH: git@github.com:user/repo.git
  * - HTTPS: https://github.com/user/repo.git
  * - Git protocol: git://github.com/user/repo.git
+ * - File protocol: file:///path/to/repo (for local testing)
  * - URLs ending with .git
  */
 export function isGitUrl(source: string): boolean {
@@ -319,6 +320,7 @@ export function isGitUrl(source: string): boolean {
     source.startsWith('git://') ||
     source.startsWith('http://') ||
     source.startsWith('https://') ||
+    source.startsWith('file://') ||
     source.endsWith('.git')
   );
 }
@@ -374,6 +376,26 @@ export function parseGitUrl(url: string): ParsedGitUrl | null {
         repo,
         url,
         type: protocol === 'git' ? 'git' : 'https',
+      };
+    }
+  }
+
+  // File protocol format: file:///path/to/repo
+  // Used for local testing and development
+  const fileMatch = cleanUrl.match(/^file:\/\/(.+)$/);
+  if (fileMatch) {
+    const [, filePath] = fileMatch;
+    const parts = filePath.split('/').filter(Boolean);
+    if (parts.length >= 1) {
+      // Use 'local' as host, path components as owner/repo
+      const repo = parts[parts.length - 1];
+      const owner = parts.length > 1 ? parts[parts.length - 2] : 'local';
+      return {
+        host: 'local',
+        owner,
+        repo,
+        url,
+        type: 'file',
       };
     }
   }

@@ -154,6 +154,8 @@ export class GitResolver {
    * - https://github.com/user/repo.git
    * - https://github.com/user/repo.git@v1.0.0
    * - https://github.com/user/repo/tree/branch/path (GitHub web URL)
+   * - file:///path/to/repo (local file URL for testing)
+   * - file:///path/to/repo/subpath@version (local file URL with subpath)
    */
   private parseGitUrlRef(ref: string): ParsedSkillRef {
     const raw = ref;

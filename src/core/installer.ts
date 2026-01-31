@@ -378,6 +378,14 @@ export class Installer {
   }
 
   /**
+   * Check if skill is installed in canonical location
+   */
+  isInstalledInCanonical(skillName: string): boolean {
+    const canonicalPath = this.getCanonicalPath(skillName);
+    return fs.existsSync(canonicalPath);
+  }
+
+  /**
    * Uninstall skill from specified agent
    */
   uninstallFromAgent(skillName: string, agentType: AgentType): boolean {
