@@ -259,12 +259,16 @@ export class RegistryClient {
     });
 
     if (!response.ok) {
-      const data = (await response.json()) as { error?: string };
-      throw new RegistryError(
-        data.error || `Failed to fetch skill metadata: ${response.status}`,
-        response.status,
-        data,
-      );
+      let errorMessage = `Failed to fetch skill metadata: ${response.status}`;
+      try {
+        const data = (await response.json()) as { error?: string };
+        if (data.error) {
+          errorMessage = data.error;
+        }
+      } catch {
+        // Ignore JSON parse errors (e.g., HTML error pages)
+      }
+      throw new RegistryError(errorMessage, response.status);
     }
 
     // API 返回格式: { success: true, data: { dist_tags: [{ tag, version }] } }
@@ -317,12 +321,16 @@ export class RegistryClient {
     });
 
     if (!response.ok) {
-      const data = (await response.json()) as { error?: string };
-      throw new RegistryError(
-        data.error || `Download failed: ${response.status}`,
-        response.status,
-        data,
-      );
+      let errorMessage = `Download failed: ${response.status}`;
+      try {
+        const data = (await response.json()) as { error?: string };
+        if (data.error) {
+          errorMessage = data.error;
+        }
+      } catch {
+        // Ignore JSON parse errors (e.g., HTML error pages)
+      }
+      throw new RegistryError(errorMessage, response.status);
     }
 
     const arrayBuffer = await response.arrayBuffer();

@@ -725,6 +725,20 @@ describe('RegistryClient', () => {
       const version = await client.resolveVersion('@kanyun/test-skill');
       expect(version).toBe('1.0.0');
     });
+
+    it('should handle non-JSON error response gracefully', async () => {
+      // Simulate 502 Bad Gateway with HTML response
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+      });
+
+      await expect(client.resolveVersion('@kanyun/test-skill', 'latest')).rejects.toThrow(
+        'Failed to fetch skill metadata: 502',
+      );
+    });
   });
 
   // ============================================================================
@@ -804,6 +818,45 @@ describe('RegistryClient', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         `${testRegistry}/api/skills/public-skill/versions/1.0.0/download`,
         expect.anything(),
+      );
+    });
+
+    it('should handle non-JSON error response (e.g., HTML error page)', async () => {
+      // Simulate 502 Bad Gateway with HTML response
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+      });
+
+      await expect(client.downloadSkill('@kanyun/test-skill', '1.0.0')).rejects.toThrow(
+        'Download failed: 502',
+      );
+    });
+
+    it('should handle 503 Service Unavailable with HTML response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+      });
+
+      await expect(client.downloadSkill('@kanyun/test-skill', '1.0.0')).rejects.toThrow(
+        'Download failed: 503',
+      );
+    });
+
+    it('should prefer JSON error message when available', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ error: 'Skill not found in registry' }),
+      });
+
+      await expect(client.downloadSkill('@kanyun/test-skill', '1.0.0')).rejects.toThrow(
+        'Skill not found in registry',
       );
     });
   });
