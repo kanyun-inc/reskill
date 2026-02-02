@@ -1,7 +1,8 @@
 # Reskill 私域 Skill 发布与安装方案
 
-> 版本：v5（最终版）  
-> 日期：2026-01-30
+> 版本：v6  
+> 日期：2026-02-02  
+> 更新：适配页面发布功能（source_type 分支）
 
 ---
 
@@ -22,15 +23,16 @@
 
 ## 核心设计
 
-| 项目         | 设计                                        |
-| ------------ | ------------------------------------------- |
-| 发布范围     | **仅支持私域**，不支持公域发布              |
-| Scope 配置   | 代码内置默认值                              |
-| 数据库索引   | 完整名称 `@kanyun/planning-with-files`      |
-| Tarball 结构 | 短名称 `planning-with-files/`（不带 scope） |
-| 安装目录     | 短名称 `planning-with-files/`（不带 scope） |
-| 同名冲突     | 报错提示                                    |
-| 来源追溯     | 无（保持简单）                              |
+| 项目         | 设计                                                              |
+| ------------ | ----------------------------------------------------------------- |
+| 发布范围     | **仅支持私域**，不支持公域发布                                    |
+| Scope 配置   | 代码内置默认值                                                    |
+| 数据库索引   | 完整名称 `@kanyun/planning-with-files`                            |
+| Tarball 结构 | 短名称 `planning-with-files/`（不带 scope）                       |
+| 安装目录     | 短名称 `planning-with-files/`（不带 scope）                       |
+| 同名冲突     | 报错提示                                                          |
+| 来源追溯     | 通过 `source_type` 字段区分 CLI / 页面发布                        |
+| 发布来源     | CLI（有版本管理）或 页面（无版本管理，详见 `web-publish-design.md`）|
 
 ### 为什么 Tarball 和安装目录不带 Scope？
 
@@ -255,39 +257,58 @@ reskill install @kanyun/planning-with-files@beta
         "Unknown scope @kanyun. Use --registry to specify."
     │
     ▼
-3. 解析版本：
+3. 查询 Skill 信息（新增 source_type）：
+    GET /api/skills/@kanyun/planning-with-files
+    └── 获取 source_type, versions, dist-tags, artifact_key
+    │
+    ▼
+4. 检查 source_type 并分支（v6 新增）：
+    │
+    ├── source_type = 'registry'（CLI 发布）
+    │   └── 继续步骤 5（现有流程）
+    │
+    └── source_type ≠ 'registry'（页面发布）
+        │
+        ├── 有 @version 指定 → 报错 ❌
+        │   "Version specifier not supported for web-published skills.
+        │    Use: reskill install @kanyun/planning-with-files"
+        │
+        └── 根据 source_type 分支安装：
+            ├── github/gitlab → Git clone source_url（解析 URL 获取 ref/path）
+            ├── oss_url/custom_url → 直接下载 source_url
+            └── local → 下载 OSS: source_url
+            │
+            └── 跳转到步骤 8（检查冲突）
+    │
+    ▼
+5. 解析版本（仅 registry 模式）：
     ├── 是 semver 格式（如 2.4.5）→ 直接使用
     └── 否则视为 tag（如 latest/beta）→ 查询对应版本
     │
     ▼
-4. 查询 Skill 信息：
-    GET /api/skills/@kanyun/planning-with-files
-    └── 获取 versions, dist-tags, artifact_key
-    │
-    ▼
-5. 下载 Tarball：
+6. 下载 Tarball（仅 registry 模式）：
     GET /api/skills/@kanyun/planning-with-files/versions/2.4.5/download
     └── 返回 tarball + integrity
     │
     ▼
-6. 验证完整性：
+7. 验证完整性（仅 registry 模式）：
     SHA256(tarball) === integrity
     │
     ▼
-7. 确定安装目录：
+8. 确定安装目录：
     ├── 检测 .claude/ 存在 → .claude/skills/
     ├── 检测 .cursor/ 存在 → .cursor/skills/
     └── 默认 → .ai-skills/
     │
     ▼
-8. 检查冲突：
+9. 检查冲突：
     ├── 目录 .claude/skills/planning-with-files/ 已存在
     └── 报错 ❌（见「同名冲突处理」）
     │
     ▼
-9. 解压 Tarball：
+10. 解压/克隆到本地：
     .claude/skills/
-    └── planning-with-files/    ← 短名称（来自 tarball）
+    └── planning-with-files/    ← 短名称
         ├── SKILL.md
         └── ...
     │
@@ -298,39 +319,53 @@ reskill install @kanyun/planning-with-files@beta
     Location: .claude/skills/planning-with-files/
 ```
 
-### Install 查找文件流程图
+### Install 查找文件流程图（v6 更新）
 
 ```
 用户输入: reskill install @kanyun/planning-with-files
                 │
                 ▼
         ┌───────────────────┐
-        │   1. 查询数据库    │  ← 用完整名称 @kanyun/planning-with-files
+        │   1. 查询 skills   │  ← 用完整名称 @kanyun/planning-with-files
+        │   获取 source_type │
         └─────────┬─────────┘
                   │
                   ▼
         ┌───────────────────┐
-        │  skill_versions   │
-        │                   │
-        │  skill_name: @kanyun/planning-with-files
-        │  version: 2.4.5
-        │  artifact_key: sha256/b4aiu47....tgz  ← 找到 OSS 文件路径
+        │  2. 判断 source_type
         └─────────┬─────────┘
                   │
-                  ▼
-        ┌───────────────────┐
-        │   2. 下载 OSS     │  ← 通过 artifact_key 下载
-        │   sha256/<hash>.tgz
-        └─────────┬─────────┘
-                  │
-                  ▼
-        ┌───────────────────┐
-        │   3. 解压到本地    │
-        │   .claude/skills/planning-with-files/
-        └───────────────────┘
+        ┌─────────┴─────────────────────────────────┐
+        │                                           │
+        ▼                                           ▼
+  source_type = 'registry'              source_type ≠ 'registry'（页面发布）
+        │                                           │
+        ▼                                           ▼
+┌───────────────────┐                   ┌───────────────────────────┐
+│  skill_versions   │                   │  根据 source_type 分支     │
+│                   │                   │                           │
+│  artifact_key:    │                   │  github/gitlab:           │
+│  sha256/b4aiu...  │                   │    → Git clone source_url │
+└─────────┬─────────┘                   │                           │
+          │                             │  oss_url/custom_url:      │
+          ▼                             │    → 下载 source_url      │
+┌───────────────────┐                   │                           │
+│  3. 下载 OSS      │                   │  local:                   │
+│  sha256/<hash>.tgz│                   │    → 下载 OSS source_url  │
+└─────────┬─────────┘                   └─────────────┬─────────────┘
+          │                                           │
+          └─────────────────┬─────────────────────────┘
+                            │
+                            ▼
+                  ┌───────────────────┐
+                  │   4. 解压到本地    │
+                  │   .claude/skills/planning-with-files/
+                  └───────────────────┘
 ```
 
-**关键点**：查找文件靠的是数据库索引（完整名称 → artifact_key），不是靠 tarball 内部的目录名。
+**关键点**：
+- CLI 发布（registry）：通过 `skill_versions.artifact_key` 查找 OSS 文件
+- 页面发布（其他）：通过 `skills.source_url` 直接获取来源地址
 
 ---
 
@@ -412,11 +447,30 @@ To replace it, first remove the existing directory:
 
 ## 数据库与存储
 
-### 数据库（无需改动）
+### 数据库
+
+#### skills 表（v6 新增字段）
+
+| 字段          | 类型 | 默认值       | 说明                                                         |
+| ------------- | ---- | ------------ | ------------------------------------------------------------ |
+| `name`        | TEXT | —            | 主键，完整名称 `@kanyun/planning-with-files`                 |
+| `source_type` | TEXT | `'registry'` | 来源类型：`registry` / `github` / `gitlab` / `oss_url` / `custom_url` / `local` |
+| `source_url`  | TEXT | NULL         | 完整 URL（包含 ref 和 path），install 时解析                 |
+
+**数据示例：**
+
+| name                 | source_type | source_url                                                 |
+| -------------------- | ----------- | ---------------------------------------------------------- |
+| @kanyun/cli-skill    | registry    | NULL                                                       |
+| @kanyun/github-skill | github      | https://github.com/user/repo/tree/main/skills/my-skill     |
+| @kanyun/local-skill  | local       | local/@kanyun/local-skill.tgz                              |
+
+> **说明**：GitHub/GitLab URL 包含完整的 ref 和 path 信息，install 时通过 `GitResolver.parseGitUrlRef()` 解析。
+
+#### 其他表（无改动）
 
 | 表               | 字段                    | 示例值                                                    |
 | ---------------- | ----------------------- | --------------------------------------------------------- |
-| `skills`         | `name` (PK)             | `@kanyun/planning-with-files`                             |
 | `skill_versions` | `(skill_name, version)` | `('@kanyun/planning-with-files', '2.4.5')`                |
 | `skill_versions` | `artifact_key`          | `sha256/b4aiu47PSnGA3gqonVgSWrSbFBmWp8su2xEfdGXEp0c=.tgz` |
 | `dist_tags`      | `(skill_name, tag)`     | `('@kanyun/planning-with-files', 'latest')`               |
@@ -424,13 +478,18 @@ To replace it, first remove the existing directory:
 ### 查询示例
 
 ```sql
--- Install @kanyun/planning-with-files@latest
+-- 1. 查询 skill 信息（包含 source_type）
+SELECT name, source_type, source_url
+FROM skills
+WHERE name = '@kanyun/planning-with-files';
+
+-- 2. Install @kanyun/planning-with-files@latest（仅 source_type='registry' 时）
 SELECT sv.artifact_key, sv.version, sv.integrity
 FROM dist_tags dt
 JOIN skill_versions sv ON dt.skill_name = sv.skill_name AND dt.version = sv.version
 WHERE dt.skill_name = '@kanyun/planning-with-files' AND dt.tag = 'latest';
 
--- Install @kanyun/planning-with-files@2.4.5
+-- 3. Install @kanyun/planning-with-files@2.4.5（仅 source_type='registry' 时）
 SELECT artifact_key, integrity
 FROM skill_versions
 WHERE skill_name = '@kanyun/planning-with-files' AND version = '2.4.5';
@@ -448,6 +507,8 @@ WHERE skill_name = '@kanyun/planning-with-files' AND version = '2.4.5';
 
 ## 改动清单
 
+### 已完成（v5）
+
 | 组件            | 改动项                                 | 工作量 |
 | --------------- | -------------------------------------- | ------ |
 | **reskill CLI** | 添加 `PRIVATE_REGISTRIES` 配置         | 小     |
@@ -460,7 +521,19 @@ WHERE skill_name = '@kanyun/planning-with-files' AND version = '2.4.5';
 | **reskill CLI** | Install 从 scope 反查 Registry         | 小     |
 | **reskill CLI** | Install 自动检测安装目录               | 小     |
 | **reskill CLI** | Install 冲突检测与报错                 | 小     |
-| **reskill-app** | 无需改动                               | —      |
+
+### 新增（v6 - 适配页面发布）
+
+| 组件            | 改动项                                            | 工作量 |
+| --------------- | ------------------------------------------------- | ------ |
+| **reskill-app** | skills 表增加 `source_type`/`source_url` 字段     | 小     |
+| **reskill-app** | GET /api/skills/:id 返回 source_type 等新字段     | 小     |
+| **reskill-app** | 新增 POST /api/skills/publish-web 接口（页面发布）| 中     |
+| **reskill CLI** | Install 增加 source_type 分支逻辑                 | 中     |
+| **reskill CLI** | 非 registry 模式不支持 @version，增加报错处理     | 小     |
+| **reskill CLI** | 复用 GitResolver.parseGitUrlRef() 解析 URL        | 小     |
+| **reskill CLI** | 复用 HttpResolver 处理 oss_url/custom_url 来源    | 小     |
+| **reskill CLI** | 新增 local 模式下载 OSS 固定路径                  | 小     |
 
 ---
 
@@ -506,7 +579,7 @@ cd planning-with-files && reskill publish
 └─────────────────────────────────────────┘
 ```
 
-### Install 流程
+### Install 流程（v6 更新）
 
 ```
 reskill install @kanyun/planning-with-files
@@ -525,38 +598,78 @@ reskill install @kanyun/planning-with-files
 │                                        │
 │  3. 查询 API（用完整名称）             │
 │     GET /api/skills/@kanyun/planning.. │
-│     → artifact_key                     │
+│     → source_type, source_url, ...     │
 │                                        │
-│  4. 下载 + 验证 Integrity              │
+│  4. 判断 source_type（v6 新增）        │
+│     ├── registry → 步骤 5              │
+│     └── 其他 → 步骤 4.1                │
 │                                        │
-│  5. 检测安装目录                       │
+│  4.1 页面发布分支（v6 新增）           │
+│     ├── 有 @version → 报错 ❌          │
+│     └── github/gitlab → Git clone      │
+│         oss_url/custom_url → 下载 URL  │
+│         local → 下载 OSS               │
+│         → 跳到步骤 6                   │
+│                                        │
+│  5. 下载 + 验证 Integrity              │
+│     （仅 registry 模式）               │
+│                                        │
+│  6. 检测安装目录                       │
 │     .claude/ → .claude/skills/         │
 │                                        │
-│  6. 检查冲突                           │
+│  7. 检查冲突                           │
 │     planning-with-files/ 已存在？→ 报错│
 │                                        │
-│  7. 解压                               │
+│  8. 解压/克隆                          │
 │     .claude/skills/planning-with-files/│
 │     └── SKILL.md, ...                  │
 └────────────────────────────────────────┘
 ```
 
-### 数据流总览
+### 数据流总览（v6 更新）
 
 ```
-PUBLISH:
+PUBLISH (CLI):
   ./planning-with-files/
   → CLI: 完整名称 @kanyun/planning-with-files
   → Tarball 内部: planning-with-files/SKILL.md
-  → DB 索引: @kanyun/planning-with-files → sha256/<hash>.tgz
+  → DB: skills.source_type = 'registry'
+  → DB: skill_versions.artifact_key = sha256/<hash>.tgz
   → OSS: sha256/<hash>.tgz
+
+PUBLISH (页面 - Remote URL):
+  https://github.com/user/repo/tree/main/skills/my-skill
+  → DB: skills.source_type = 'github'
+  → DB: skills.source_url = 'https://github.com/user/repo/tree/main/skills/my-skill'
+  → 不写 skill_versions（URL 包含完整 ref 和 path）
+
+PUBLISH (页面 - Local Folder):
+  用户上传文件夹
+  → 前端打包 tarball → 上传 OSS
+  → DB: skills.source_type = 'local'
+  → DB: skills.source_url = 'local/@kanyun/skill-name.tgz'
+  → 不写 skill_versions
 
 INSTALL:
   @kanyun/planning-with-files
-  → CLI 解析 → API 查询（完整名称）
-  → DB: @kanyun/planning-with-files → artifact_key
-  → 下载 OSS: sha256/<hash>.tgz
-  → 解压: .claude/skills/planning-with-files/SKILL.md
+  → CLI 解析 → API 查询（获取 source_type）
+  │
+  ├── source_type = 'registry':
+  │   → DB: skill_versions → artifact_key
+  │   → 下载 OSS: sha256/<hash>.tgz
+  │   → 解压
+  │
+  ├── source_type = 'github/gitlab':
+  │   → Git clone source_url (ref, path)
+  │
+  ├── source_type = 'oss_url/custom_url':
+  │   → 直接下载 source_url
+  │
+  └── source_type = 'local':
+      → 下载 OSS: source_url
+      → 解压
+
+  → 最终: .claude/skills/planning-with-files/SKILL.md
 ```
 
 ---
@@ -565,11 +678,14 @@ INSTALL:
 
 ### 错误信息参考
 
-| 场景               | 错误信息                                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------------------ |
-| SKILL.md 不存在    | `SKILL.md not found in /path/to/dir`                                                             |
-| 未指定 Registry    | `No registry specified. Set RESKILL_REGISTRY or use --registry`                                  |
-| 非私域 Registry    | `Only private registry publishing is supported. Supported: https://reskill-test.zhenguanyu.com/` |
-| 未知 Scope         | `Unknown scope @xxx. Use --registry to specify.`                                                 |
-| 同名冲突           | `Conflict: .claude/skills/xxx/ already exists.`                                                  |
-| Integrity 校验失败 | `Integrity check failed. Expected: sha256-xxx, Got: sha256-yyy`                                  |
+| 场景                       | 错误信息                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------ |
+| SKILL.md 不存在            | `SKILL.md not found in /path/to/dir`                                                             |
+| 未指定 Registry            | `No registry specified. Set RESKILL_REGISTRY or use --registry`                                  |
+| 非私域 Registry            | `Only private registry publishing is supported. Supported: https://reskill-test.zhenguanyu.com/` |
+| 未知 Scope                 | `Unknown scope @xxx. Use --registry to specify.`                                                 |
+| 同名冲突                   | `Conflict: .claude/skills/xxx/ already exists.`                                                  |
+| Integrity 校验失败         | `Integrity check failed. Expected: sha256-xxx, Got: sha256-yyy`                                  |
+| 页面发布 skill 指定版本    | `Version specifier not supported for web-published skills. Use: reskill install @scope/skill`    |
+| CLI 发布已有页面发布的 skill | `This skill was published via web. Please use the web interface to update it.`                 |
+| 页面发布已有 CLI 发布的 skill | `This skill was published via CLI. Please use CLI to publish new versions.`                   |
