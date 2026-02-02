@@ -102,92 +102,6 @@ describe('RegistryClient', () => {
   });
 
   // ============================================================================
-  // login tests
-  // ============================================================================
-
-  describe('login', () => {
-    beforeEach(() => {
-      client = new RegistryClient({ registry: testRegistry });
-    });
-
-    it('should send login request with correct payload', async () => {
-      const mockResponse = {
-        success: true,
-        publisher: {
-          id: 'pub_123',
-          handle: 'testuser',
-          email: 'test@example.com',
-          email_verified: true,
-          created_at: '2024-01-01T00:00:00Z',
-        },
-        token: {
-          id: 'tok_123',
-          secret: 'secret_token',
-          name: 'CLI Token',
-        },
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
-
-      const result = await client.login({
-        email: 'test@example.com',
-        password: 'password123',
-      });
-
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(mockFetch).toHaveBeenCalledWith(
-        `${testRegistry}/api/auth/login`,
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({
-            'Content-Type': 'application/json',
-            'User-Agent': 'reskill/1.0',
-            'X-Client-Type': 'cli',
-          }),
-          body: JSON.stringify({
-            email: 'test@example.com',
-            password: 'password123',
-          }),
-        }),
-      );
-
-      expect(result).toEqual(mockResponse);
-    });
-
-    it('should throw RegistryError on login failure', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        json: () => Promise.resolve({ error: 'Invalid credentials' }),
-      });
-
-      try {
-        await client.login({ email: 'test@example.com', password: 'wrong' });
-        expect.fail('Expected RegistryError to be thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(RegistryError);
-        expect((error as RegistryError).message).toBe('Invalid credentials');
-        expect((error as RegistryError).statusCode).toBe(401);
-      }
-    });
-
-    it('should use default error message when none provided', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: () => Promise.resolve({}),
-      });
-
-      await expect(client.login({ email: 'test@example.com', password: 'test' })).rejects.toThrow(
-        'Login failed: 500',
-      );
-    });
-  });
-
-  // ============================================================================
   // whoami tests
   // ============================================================================
 
@@ -199,6 +113,7 @@ describe('RegistryClient', () => {
         success: true,
         user: {
           id: 'testuser',
+          handle: 'kanyun',
         },
       };
 
@@ -237,6 +152,7 @@ describe('RegistryClient', () => {
             success: true,
             user: {
               id: 'testuser',
+              handle: 'kanyun',
             },
           }),
       });
@@ -245,6 +161,29 @@ describe('RegistryClient', () => {
 
       const callHeaders = mockFetch.mock.calls[0][1].headers;
       expect(callHeaders.Authorization).toBe(`Bearer ${testToken}`);
+    });
+
+    it('should return user with both id and handle', async () => {
+      client = new RegistryClient({ registry: testRegistry, token: testToken });
+
+      const mockResponse = {
+        success: true,
+        user: {
+          id: 'wangzirenbj',
+          handle: 'kanyun',
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await client.whoami();
+
+      expect(result.success).toBe(true);
+      expect(result.user?.id).toBe('wangzirenbj');
+      expect(result.user?.handle).toBe('kanyun');
     });
 
     it('should throw RegistryError on whoami failure', async () => {

@@ -48,9 +48,9 @@ async function whoamiAction(options: WhoamiOptions): Promise<void> {
 
     const { user } = response;
 
-    logger.log(`@${user.id}`);
+    logger.log(`@${user.handle}`);
+    logger.log(`  Username: ${user.id}`);
     logger.log(`  Registry: ${registry}`);
-
   } catch (error) {
     if (error instanceof RegistryError) {
       if (error.statusCode === 401) {
@@ -73,7 +73,10 @@ async function whoamiAction(options: WhoamiOptions): Promise<void> {
 
 export const whoamiCommand = new Command('whoami')
   .description('Show current authenticated user')
-  .option('-r, --registry <url>', 'Registry URL (or set RESKILL_REGISTRY env var, or defaults.publishRegistry in skills.json)')
+  .option(
+    '-r, --registry <url>',
+    'Registry URL (or set RESKILL_REGISTRY env var, or defaults.publishRegistry in skills.json)',
+  )
   .action(whoamiAction);
 
 export default whoamiCommand;

@@ -8,9 +8,9 @@ export {
   getAllAgentTypes,
   isValidAgentType,
 } from './agent-registry.js';
+export type { RegistryAuth, ReskillConfig } from './auth-manager.js';
 // Auth management
 export { AuthManager } from './auth-manager.js';
-export type { RegistryAuth, ReskillConfig } from './auth-manager.js';
 export { CacheManager } from './cache-manager.js';
 export { ConfigLoader, DEFAULT_REGISTRIES } from './config-loader.js';
 /**
@@ -24,6 +24,17 @@ export { HttpResolver } from './http-resolver.js';
 export type { InstallerOptions, InstallMode, InstallResult } from './installer.js';
 export { Installer } from './installer.js';
 export { LockManager } from './lock-manager.js';
+// Publisher
+export type { GitInfo, PublishPayload } from './publisher.js';
+export { PublishError, Publisher } from './publisher.js';
+// Registry client
+export type {
+  PublishRequest,
+  PublishResponse,
+  RegistryConfig,
+  WhoamiResponse,
+} from './registry-client.js';
+export { RegistryClient, RegistryError } from './registry-client.js';
 export type { SkillManagerOptions } from './skill-manager.js';
 export { SkillManager } from './skill-manager.js';
 export type { ParsedSkill, SkillMdFrontmatter } from './skill-parser.js';
@@ -37,19 +48,11 @@ export {
   validateSkillDescription,
   validateSkillName,
 } from './skill-parser.js';
-// Publisher
-export type { GitInfo, PublishPayload } from './publisher.js';
-export { Publisher, PublishError } from './publisher.js';
-// Registry client
-export type {
-  LoginRequest,
-  LoginResponse,
-  PublishRequest,
-  PublishResponse,
-  RegistryConfig,
-  WhoamiResponse,
-} from './registry-client.js';
-export { RegistryClient, RegistryError } from './registry-client.js';
 // Skill validator
-export type { LoadedSkill, ValidationError, ValidationResult, ValidationWarning } from './skill-validator.js';
+export type {
+  LoadedSkill,
+  ValidationError,
+  ValidationResult,
+  ValidationWarning,
+} from './skill-validator.js';
 export { SkillValidator } from './skill-validator.js';

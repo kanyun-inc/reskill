@@ -10,16 +10,21 @@ import * as path from 'node:path';
 import { createInterface } from 'node:readline';
 import { Command } from 'commander';
 import { AuthManager } from '../../core/auth-manager.js';
-import { Publisher, PublishError, type GitInfo, type PublishPayload } from '../../core/publisher.js';
+import {
+  type GitInfo,
+  PublishError,
+  Publisher,
+  type PublishPayload,
+} from '../../core/publisher.js';
 import { RegistryClient, RegistryError } from '../../core/registry-client.js';
 import {
-  SkillValidator,
   type LoadedSkill,
+  SkillValidator,
   type ValidationResult,
 } from '../../core/skill-validator.js';
 import { logger } from '../../utils/logger.js';
 import { resolveRegistry } from '../../utils/registry.js';
-import { getScopeForRegistry, buildFullSkillName } from '../../utils/registry-scope.js';
+import { buildFullSkillName, getScopeForRegistry } from '../../utils/registry-scope.js';
 
 // ============================================================================
 // Types
@@ -58,34 +63,34 @@ const BLOCKED_PUBLIC_REGISTRIES = [
  * Priority:
  * 1. If name already contains scope (e.g., "@scope/name"), use as-is
  * 2. If registry has a configured scope, use that scope
- * 3. Fallback to user handle as scope
+ * 3. Throw error if no scope configured (no fallback)
  *
  * @param name - Skill name (may or may not include scope)
  * @param registry - Registry URL
- * @param userHandle - User's handle (fallback scope)
+ * @param _userHandle - Deprecated, no longer used (kept for backward compatibility)
  * @returns Full skill name with scope (e.g., "@kanyun/planning-with-files")
+ * @throws Error if registry has no configured scope
  *
  * @internal Exported for testing
  */
 export function buildPublishSkillName(
   name: string,
   registry: string,
-  userHandle: string,
+  _userHandle?: string,
 ): string {
   // If name already has scope, use as-is
   if (name.includes('/')) {
     return name;
   }
 
-  // Try to get scope from registry configuration
+  // Get scope from registry configuration (required)
   const registryScope = getScopeForRegistry(registry);
 
-  if (registryScope) {
-    return buildFullSkillName(registryScope, name);
+  if (!registryScope) {
+    throw new Error(`No scope configured for registry: ${registry}`);
   }
 
-  // Fallback to user handle
-  return buildFullSkillName(userHandle, name);
+  return buildFullSkillName(registryScope, name);
 }
 
 /**
@@ -96,13 +101,13 @@ export function isBlockedPublicRegistry(registryUrl: string): boolean {
   try {
     const url = new URL(registryUrl);
     const hostname = url.hostname.toLowerCase();
-    return BLOCKED_PUBLIC_REGISTRIES.some(blocked => 
-      hostname === blocked || hostname.endsWith(`.${blocked}`)
+    return BLOCKED_PUBLIC_REGISTRIES.some(
+      (blocked) => hostname === blocked || hostname.endsWith(`.${blocked}`),
     );
   } catch {
     // If URL parsing fails, check if the string contains blocked domains
     const lowerUrl = registryUrl.toLowerCase();
-    return BLOCKED_PUBLIC_REGISTRIES.some(blocked => lowerUrl.includes(blocked));
+    return BLOCKED_PUBLIC_REGISTRIES.some((blocked) => lowerUrl.includes(blocked));
   }
 }
 
@@ -139,7 +144,7 @@ function checkAuth(registry: string, dryRun: boolean): { token: string } | null 
     }
     logger.error('Authentication required');
     logger.newline();
-    logger.log("You must be logged in to publish skills.");
+    logger.log('You must be logged in to publish skills.');
     logger.log("Run 'reskill login' to authenticate.");
     process.exit(1);
   }
@@ -150,10 +155,7 @@ function checkAuth(registry: string, dryRun: boolean): { token: string } | null 
 /**
  * Display validation results
  */
-function displayValidation(
-  skill: LoadedSkill,
-  validation: ValidationResult,
-): void {
+function displayValidation(skill: LoadedSkill, validation: ValidationResult): void {
   logger.log('Validating skill...');
 
   // SKILL.md is the primary file per agentskills.io spec
@@ -176,7 +178,7 @@ function displayValidation(
     if (skill.skillJson.description) {
       const desc =
         skill.skillJson.description.length > 50
-          ? skill.skillJson.description.slice(0, 50) + '...'
+          ? `${skill.skillJson.description.slice(0, 50)}...`
           : skill.skillJson.description;
       logger.log(`  ✓ Description: ${desc}`);
     }
@@ -317,24 +319,17 @@ function displayWarnings(validation: ValidationResult): void {
 /**
  * Confirm publish
  */
-async function confirmPublish(
-  name: string,
-  version: string,
-  registry: string,
-): Promise<boolean> {
+async function confirmPublish(name: string, version: string, registry: string): Promise<boolean> {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
   return new Promise((resolve) => {
-    rl.question(
-      `\n? Publish ${name}@${version} to ${registry}? (y/N) `,
-      (answer) => {
-        rl.close();
-        resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
-      },
-    );
+    rl.question(`\n? Publish ${name}@${version} to ${registry}? (y/N) `, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+    });
   });
 }
 
@@ -352,10 +347,7 @@ function displayDryRunSummary(payload: PublishPayload): void {
 // Main Action
 // ============================================================================
 
-async function publishAction(
-  skillPath: string,
-  options: PublishOptions,
-): Promise<void> {
+async function publishAction(skillPath: string, options: PublishOptions): Promise<void> {
   const absolutePath = path.resolve(skillPath);
   const registry = resolveRegistry(options.registry, absolutePath);
 
@@ -416,9 +408,13 @@ async function publishAction(
     // 7. Display preview
     logger.newline();
     if (options.dryRun) {
-      logger.log(`📦 Dry run: ${skill.skillJson?.name || 'unknown'}@${skill.skillJson?.version || 'unknown'}`);
+      logger.log(
+        `📦 Dry run: ${skill.skillJson?.name || 'unknown'}@${skill.skillJson?.version || 'unknown'}`,
+      );
     } else {
-      logger.log(`📦 Publishing ${skill.skillJson?.name || 'unknown'}@${skill.skillJson?.version || 'unknown'}...`);
+      logger.log(
+        `📦 Publishing ${skill.skillJson?.name || 'unknown'}@${skill.skillJson?.version || 'unknown'}...`,
+      );
     }
     logger.newline();
 
@@ -467,7 +463,7 @@ async function publishAction(
     if (!token) {
       logger.error('Authentication required');
       logger.newline();
-      logger.log("You must be logged in to publish skills.");
+      logger.log('You must be logged in to publish skills.');
       logger.log("Run 'reskill login' to authenticate.");
       process.exit(1);
     }
@@ -479,18 +475,11 @@ async function publishAction(
     const client = new RegistryClient({ registry, token });
 
     try {
-      // Get skill name with scope
-      // Priority: registry scope > user handle
-      const handle = authManager.getHandle(registry) || 'unknown';
+      // Get skill name with scope from registry mapping
       const name = skill.skillJson?.name ?? '';
-      const skillName = buildPublishSkillName(name, registry, handle);
+      const skillName = buildPublishSkillName(name, registry);
 
-      const result = await client.publish(
-        skillName,
-        payload!,
-        absolutePath,
-        { tag: options.tag },
-      );
+      const result = await client.publish(skillName, payload!, absolutePath, { tag: options.tag });
 
       if (!result.success || !result.data) {
         logger.error(result.error || 'Publish failed');
@@ -506,7 +495,6 @@ async function publishAction(
       logger.log(`  Integrity: ${result.data.integrity}`);
       logger.newline();
       logger.log(`View at: ${registry}/skills/${encodeURIComponent(result.data.name)}`);
-
     } catch (publishError) {
       if (publishError instanceof RegistryError) {
         logger.error(`Publish failed: ${publishError.message}`);
@@ -520,7 +508,6 @@ async function publishAction(
       }
       process.exit(1);
     }
-
   } catch (error) {
     if (error instanceof PublishError) {
       logger.error(error.message);
@@ -538,7 +525,10 @@ export const publishCommand = new Command('publish')
   .alias('pub')
   .description('Publish a skill to the registry')
   .argument('[path]', 'Path to skill directory', '.')
-  .option('-r, --registry <url>', 'Registry URL (or set RESKILL_REGISTRY env var, or defaults.publishRegistry in skills.json)')
+  .option(
+    '-r, --registry <url>',
+    'Registry URL (or set RESKILL_REGISTRY env var, or defaults.publishRegistry in skills.json)',
+  )
   .option('-t, --tag <tag>', 'Git tag to publish')
   .option('--access <level>', 'Access level: public or restricted', 'public')
   .option('-n, --dry-run', 'Validate without publishing')

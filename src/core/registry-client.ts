@@ -9,9 +9,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { pack } from 'tar-stream';
-import type { PublishPayload } from './publisher.js';
-import { getShortName } from '../utils/registry-scope.js';
 import type { SkillInfo } from '../types/index.js';
+import { getShortName } from '../utils/registry-scope.js';
+import type { PublishPayload } from './publisher.js';
 
 // ============================================================================
 // Types
@@ -20,28 +20,6 @@ import type { SkillInfo } from '../types/index.js';
 export interface RegistryConfig {
   registry: string;
   token?: string;
-}
-
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface LoginResponse {
-  success: boolean;
-  error?: string;
-  publisher?: {
-    id: string;
-    handle: string;
-    email: string;
-    email_verified: boolean;
-    created_at: string;
-  };
-  token?: {
-    id: string;
-    secret: string;
-    name: string;
-  };
 }
 
 export interface PublishRequest {
@@ -73,6 +51,7 @@ export interface WhoamiResponse {
   error?: string;
   user?: {
     id: string;
+    handle: string;
   };
 }
 
@@ -121,38 +100,10 @@ export class RegistryClient {
     };
 
     if (this.config.token) {
-      headers['Authorization'] = `Bearer ${this.config.token}`;
+      headers.Authorization = `Bearer ${this.config.token}`;
     }
 
     return headers;
-  }
-
-  /**
-   * Login to registry
-   */
-  async login(request: LoginRequest): Promise<LoginResponse> {
-    const url = `${this.config.registry}/api/auth/login`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        ...this.getAuthHeaders(),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    const data = await response.json() as LoginResponse;
-
-    if (!response.ok) {
-      throw new RegistryError(
-        data.error || `Login failed: ${response.status}`,
-        response.status,
-        data,
-      );
-    }
-
-    return data;
   }
 
   /**
@@ -166,7 +117,7 @@ export class RegistryClient {
       headers: this.getAuthHeaders(),
     });
 
-    const data = await response.json() as WhoamiResponse;
+    const data = (await response.json()) as WhoamiResponse;
 
     if (!response.ok) {
       throw new RegistryError(
@@ -252,11 +203,7 @@ export class RegistryClient {
 
       // 404 时给出明确的 skill 不存在错误
       if (response.status === 404) {
-        throw new RegistryError(
-          `Skill not found: ${skillName}`,
-          response.status,
-          data,
-        );
+        throw new RegistryError(`Skill not found: ${skillName}`, response.status, data);
       }
 
       throw new RegistryError(
@@ -493,7 +440,7 @@ export class RegistryClient {
       body: formData,
     });
 
-    const data = await response.json() as PublishResponse;
+    const data = (await response.json()) as PublishResponse;
 
     if (!response.ok) {
       throw new RegistryError(

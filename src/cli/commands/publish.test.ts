@@ -129,14 +129,13 @@ describe('publish command', () => {
     });
 
     describe('with unknown registry scope', () => {
-      it('should fallback to user handle for unknown registry', () => {
-        const result = buildPublishSkillName(
+      it('should throw error for unknown registry (no fallback)', () => {
+        // Registry must be in REGISTRY_SCOPE_MAP, no fallback to userHandle
+        expect(() => buildPublishSkillName(
           'my-skill',
           'https://unknown-registry.com/',
           'wangzirenbj',
-        );
-        // Falls back to user handle when registry scope is not configured
-        expect(result).toBe('@wangzirenbj/my-skill');
+        )).toThrow('No scope configured for registry');
       });
     });
 

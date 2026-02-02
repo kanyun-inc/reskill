@@ -31,15 +31,15 @@ describe('login command', () => {
       expect(registryOption?.description).toContain('Registry URL');
     });
 
-    it('should have --token option for pre-generated tokens', () => {
+    it('should have --token option for API token', () => {
       const tokenOption = loginCommand.options.find(
         (opt) => opt.short === '-t' || opt.long === '--token',
       );
       expect(tokenOption).toBeDefined();
       expect(tokenOption?.flags).toContain('-t');
       expect(tokenOption?.flags).toContain('--token');
-      expect(tokenOption?.description).toContain('pre-generated token');
-      expect(tokenOption?.description).toContain('CAS');
+      expect(tokenOption?.description).toContain('token');
+      expect(tokenOption?.description).toContain('Web UI');
     });
 
     it('registry option should accept a URL argument', () => {
@@ -91,12 +91,29 @@ describe('login command', () => {
       expect(registryOption?.description).toContain('RESKILL_REGISTRY');
     });
 
-    it('token option description should mention OAuth/CAS', () => {
+    it('token option description should mention Web UI', () => {
       const tokenOption = loginCommand.options.find(
         (opt) => opt.long === '--token',
       );
-      // Description mentions CAS/OAuth use case
-      expect(tokenOption?.description).toContain('OAuth');
+      // Token-only login: description should mention Web UI
+      expect(tokenOption?.description).toContain('Web UI');
+    });
+  });
+
+  // ============================================================================
+  // Token-only login tests (email/password removed)
+  // ============================================================================
+
+  describe('token-only login', () => {
+    it('token option should indicate it is required', () => {
+      // After removing email/password login, token should be the only way to login
+      // The --token option description should indicate it's required
+      const tokenOption = loginCommand.options.find(
+        (opt) => opt.long === '--token',
+      );
+      expect(tokenOption).toBeDefined();
+      // Description should indicate it's required
+      expect(tokenOption?.description?.toLowerCase()).toContain('required');
     });
   });
 });
