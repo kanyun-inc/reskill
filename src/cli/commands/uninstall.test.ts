@@ -37,6 +37,17 @@ vi.mock('../../core/installer.js', () => ({
       // Mock: skill is installed in cursor and claude-code
       return ['cursor', 'claude-code'].includes(agent);
     }),
+    isInstalledInCanonical: vi.fn(() => false),
+  })),
+}));
+
+vi.mock('../../core/config-loader.js', () => ({
+  ConfigLoader: vi.fn().mockImplementation(() => ({
+    getDefaults: vi.fn(() => ({
+      installDir: '.skills',
+      targetAgents: ['cursor', 'claude-code'],
+      installMode: 'symlink',
+    })),
   })),
 }));
 
@@ -86,11 +97,12 @@ describe('uninstall command', () => {
       expect(uninstallCommand.description().toLowerCase()).toContain('uninstall');
     });
 
-    it('should have required skill argument', () => {
+    it('should have required skills argument (variadic)', () => {
       const args = uninstallCommand.registeredArguments;
       expect(args.length).toBe(1);
-      expect(args[0].name()).toBe('skill');
+      expect(args[0].name()).toBe('skills');
       expect(args[0].required).toBe(true);
+      expect(args[0].variadic).toBe(true);
     });
 
     it('should have all required options', () => {

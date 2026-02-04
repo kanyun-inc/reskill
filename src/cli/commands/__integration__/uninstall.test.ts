@@ -38,9 +38,75 @@ describe('CLI Integration: uninstall', () => {
     it('should show help with --help', () => {
       const { stdout } = runCli('uninstall --help', tempDir);
       expect(stdout).toContain('Uninstall');
+      expect(stdout).toContain('skills...');
       expect(stdout).toContain('--global');
       expect(stdout).toContain('--yes');
       expect(stdout).toContain('-y');
+    });
+  });
+
+  describe('multiple skills uninstall', () => {
+    it('should uninstall multiple skills at once', () => {
+      // Create multiple skills in agent directory
+      const agentSkillsDir = path.join(tempDir, '.cursor', 'skills');
+      createMockSkill(agentSkillsDir, 'skill-one');
+      createMockSkill(agentSkillsDir, 'skill-two');
+      createMockSkill(agentSkillsDir, 'skill-three');
+      expect(pathExists(path.join(agentSkillsDir, 'skill-one'))).toBe(true);
+      expect(pathExists(path.join(agentSkillsDir, 'skill-two'))).toBe(true);
+      expect(pathExists(path.join(agentSkillsDir, 'skill-three'))).toBe(true);
+
+      // Uninstall all three at once
+      const { exitCode, stdout } = runCli('uninstall skill-one skill-two skill-three -y', tempDir);
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain('skill-one');
+      expect(stdout).toContain('skill-two');
+      expect(stdout).toContain('skill-three');
+
+      // Verify all removed
+      expect(pathExists(path.join(agentSkillsDir, 'skill-one'))).toBe(false);
+      expect(pathExists(path.join(agentSkillsDir, 'skill-two'))).toBe(false);
+      expect(pathExists(path.join(agentSkillsDir, 'skill-three'))).toBe(false);
+    });
+
+    it('should handle mix of existing and nonexistent skills', () => {
+      // Create only one skill
+      const agentSkillsDir = path.join(tempDir, '.cursor', 'skills');
+      createMockSkill(agentSkillsDir, 'existing-skill');
+
+      // Try to uninstall both existing and nonexistent
+      const { exitCode, stdout } = runCli('uninstall existing-skill nonexistent-skill -y', tempDir);
+      expect(exitCode).toBe(0);
+
+      // Should mention nonexistent not installed
+      expect(stdout.toLowerCase()).toContain('not installed');
+      // Should still uninstall the existing one
+      expect(stdout).toContain('existing-skill');
+      expect(pathExists(path.join(agentSkillsDir, 'existing-skill'))).toBe(false);
+    });
+
+    it('should remove multiple skills from skills.json', () => {
+      // Setup skills.json with multiple skills
+      setupSkillsJson(tempDir, {
+        'skill-a': 'github:test/skill-a@v1.0.0',
+        'skill-b': 'github:test/skill-b@v1.0.0',
+        'skill-c': 'github:test/skill-c@v1.0.0',
+      });
+
+      // Create skills in agent directory
+      const agentSkillsDir = path.join(tempDir, '.cursor', 'skills');
+      createMockSkill(agentSkillsDir, 'skill-a');
+      createMockSkill(agentSkillsDir, 'skill-b');
+
+      // Uninstall two skills
+      runCli('uninstall skill-a skill-b -y', tempDir);
+
+      // Verify both removed from skills.json
+      const config = readSkillsJson(tempDir);
+      expect(config.skills['skill-a']).toBeUndefined();
+      expect(config.skills['skill-b']).toBeUndefined();
+      // skill-c should remain (not uninstalled)
+      expect(config.skills['skill-c']).toBe('github:test/skill-c@v1.0.0');
     });
   });
 
