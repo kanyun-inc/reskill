@@ -1,6 +1,6 @@
 {
   "name": "reskill",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "description": "AI Skills Package Manager - Git-based skills management for AI agents",
   "type": "module",
   "packageManager": "pnpm@9.15.0",
