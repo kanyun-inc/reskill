@@ -13,12 +13,7 @@ import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  createTempDir,
-  getOutput,
-  removeTempDir,
-  runCli,
-} from './helpers.js';
+import { createTempDir, getOutput, removeTempDir, runCli } from './helpers.js';
 
 // Test registry URL (a private registry for testing)
 const TEST_REGISTRY = 'https://test-registry.example.com';
@@ -36,10 +31,7 @@ describe('CLI Integration: publish', () => {
 
   // Helper functions
   function createSkillJson(content: object): void {
-    fs.writeFileSync(
-      path.join(tempDir, 'skill.json'),
-      JSON.stringify(content, null, 2),
-    );
+    fs.writeFileSync(path.join(tempDir, 'skill.json'), JSON.stringify(content, null, 2));
   }
 
   function createSkillMd(content: string): void {
@@ -47,10 +39,7 @@ describe('CLI Integration: publish', () => {
   }
 
   /** Create a valid SKILL.md with required frontmatter */
-  function createValidSkillMd(
-    name = 'my-skill',
-    description = 'A helpful AI skill',
-  ): void {
+  function createValidSkillMd(name = 'my-skill', description = 'A helpful AI skill'): void {
     createSkillMd(`---
 name: ${name}
 description: ${description}
@@ -355,7 +344,10 @@ version: 2.5.0
       initGitRepo();
       gitCommit();
 
-      const result = runCli(`publish --dry-run --tag v999.0.0 --registry ${TEST_REGISTRY}`, tempDir);
+      const result = runCli(
+        `publish --dry-run --tag v999.0.0 --registry ${TEST_REGISTRY}`,
+        tempDir,
+      );
 
       expect(result.exitCode).toBe(1);
       expect(getOutput(result)).toContain('not found');
@@ -516,7 +508,10 @@ compatibility: cursor >=0.40
     it('should block publishing to subdomain of reskill.info', () => {
       createValidSkillMd();
 
-      const result = runCli('publish --dry-run --registry https://subdomain.api.reskill.info', tempDir);
+      const result = runCli(
+        'publish --dry-run --registry https://subdomain.api.reskill.info',
+        tempDir,
+      );
 
       expect(result.exitCode).toBe(1);
       expect(getOutput(result)).toContain('public registry is not supported');
@@ -525,7 +520,10 @@ compatibility: cursor >=0.40
     it('should allow publishing to private registry', () => {
       createValidSkillMd();
 
-      const result = runCli('publish --dry-run --registry https://reskill-test.zhenguanyu.com', tempDir);
+      const result = runCli(
+        'publish --dry-run --registry https://reskill-test.zhenguanyu.com',
+        tempDir,
+      );
 
       expect(result.exitCode).toBe(0);
       expect(getOutput(result)).toContain('Dry run');
@@ -535,7 +533,10 @@ compatibility: cursor >=0.40
     it('should allow publishing to other private domains', () => {
       createValidSkillMd();
 
-      const result = runCli('publish --dry-run --registry https://my-private-registry.example.com', tempDir);
+      const result = runCli(
+        'publish --dry-run --registry https://my-private-registry.example.com',
+        tempDir,
+      );
 
       expect(result.exitCode).toBe(0);
       expect(getOutput(result)).toContain('Dry run');
@@ -600,7 +601,10 @@ description: A skill in subdirectory
     });
 
     it('should fail with non-existent directory', () => {
-      const result = runCli(`publish /nonexistent/path --dry-run --registry ${TEST_REGISTRY}`, tempDir);
+      const result = runCli(
+        `publish /nonexistent/path --dry-run --registry ${TEST_REGISTRY}`,
+        tempDir,
+      );
 
       expect(result.exitCode).toBe(1);
     });
@@ -629,5 +633,39 @@ description: A skill in subdirectory
       expect(getOutput(result)).toContain('RESKILL_REGISTRY');
       expect(getOutput(result)).toContain('publishRegistry');
     });
+  });
+
+  // ============================================================================
+  // Missing version behavior
+  // ============================================================================
+
+  describe('missing version in SKILL.md', () => {
+    beforeEach(() => {
+      initGitRepo();
+    });
+
+    it('should use 0.0.0 with warning in --yes mode when version is missing', () => {
+      // Create SKILL.md without version
+      createSkillMd(`---
+name: my-skill
+description: A helpful AI skill
+---
+# my-skill
+
+This is the skill content.`);
+      gitCommit('add skill');
+
+      // With --yes flag, should use 0.0.0 and show warning
+      const result = runCli(`publish --dry-run --yes --registry ${TEST_REGISTRY}`, tempDir);
+
+      expect(result.exitCode).toBe(0);
+      // Should show warning about missing version
+      expect(getOutput(result)).toContain('No version specified');
+      expect(getOutput(result)).toContain('0.0.0');
+    });
+
+    // Note: Interactive mode testing (prompting for version) would require
+    // stdin input which is not supported by the current test helper.
+    // The interactive flow is tested via the unit tests for parseVersionInput.
   });
 });

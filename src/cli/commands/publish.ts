@@ -9,6 +9,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createInterface } from 'node:readline';
 import { Command } from 'commander';
+import * as semver from 'semver';
 import { AuthManager } from '../../core/auth-manager.js';
 import {
   type GitInfo,
@@ -173,7 +174,7 @@ function displayValidation(skill: LoadedSkill, validation: ValidationResult): vo
   if (validation.valid && skill.skillMd) {
     // All metadata from SKILL.md
     const { name, version, description } = skill.skillMd;
-    
+
     if (name) {
       logger.log(`  ✓ Name: ${name}`);
     }
@@ -307,12 +308,19 @@ function displayValidationErrors(validation: ValidationResult): void {
 
 /**
  * Display warnings
+ *
+ * @param validation - Validation result
+ * @param skipVersionWarning - If true, skip the version warning (user provided version interactively)
  */
-function displayWarnings(validation: ValidationResult): void {
-  if (validation.warnings.length > 0) {
+function displayWarnings(validation: ValidationResult, skipVersionWarning = false): void {
+  const warnings = skipVersionWarning
+    ? validation.warnings.filter((w) => w.field !== 'version')
+    : validation.warnings;
+
+  if (warnings.length > 0) {
     logger.newline();
-    logger.warn(`${validation.warnings.length} warning(s):`);
-    for (const warn of validation.warnings) {
+    logger.warn(`${warnings.length} warning(s):`);
+    for (const warn of warnings) {
       logger.log(`  ⚠ ${warn.field}: ${warn.message}`);
       if (warn.suggestion) {
         logger.log(`    → ${warn.suggestion}`);
@@ -348,10 +356,96 @@ async function confirmPublish(name: string, version: string, registry: string): 
 
   return new Promise((resolve) => {
     // Default is Yes (capital Y), pressing Enter confirms
-    rl.question(`\n? Publish ${name}@${version} to ${registry}? (Y/n) default: yes `, (answer) => {
+    rl.question(`\n? Publish ${name}@${version} to ${registry}? (Y/n) `, (answer) => {
       rl.close();
       resolve(parseConfirmAnswer(answer));
     });
+  });
+}
+
+/**
+ * Version input parse result
+ */
+export interface VersionInputResult {
+  valid: boolean;
+  version?: string;
+  cancelled?: boolean;
+  error?: string;
+}
+
+/**
+ * Parse version input from user
+ *
+ * @param input - User input string
+ * @returns Parse result with version, cancelled flag, or error message
+ *
+ * @internal Exported for testing
+ */
+export function parseVersionInput(input: string): VersionInputResult {
+  const trimmed = input.trim();
+
+  // Empty input means user wants to cancel
+  if (!trimmed) {
+    return { valid: false, cancelled: true };
+  }
+
+  // Check for v prefix
+  if (trimmed.startsWith('v')) {
+    return {
+      valid: false,
+      error: `Invalid version format: "${trimmed}". Version should not have "v" prefix. Use "${trimmed.slice(1)}" instead.`,
+    };
+  }
+
+  // Validate semver
+  if (!semver.valid(trimmed)) {
+    return {
+      valid: false,
+      error: `Invalid version format: "${trimmed}". Must follow semver (e.g., 1.0.0)`,
+    };
+  }
+
+  return { valid: true, version: trimmed };
+}
+
+/**
+ * Prompt user for version when missing
+ *
+ * @returns Version string if user provided one, null if cancelled
+ */
+async function promptForVersion(): Promise<string | null> {
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    logger.warn('SKILL.md 中未指定版本号');
+    logger.log('  提示：建议在 SKILL.md frontmatter 中添加 version 字段');
+    logger.newline();
+
+    const askVersion = (): void => {
+      rl.question('? 版本号 (例如 1.0.0，留空取消): ', (answer) => {
+        const result = parseVersionInput(answer);
+
+        if (result.cancelled) {
+          rl.close();
+          resolve(null);
+          return;
+        }
+
+        if (!result.valid || !result.version) {
+          logger.error(result.error || 'Invalid version');
+          askVersion(); // Re-prompt
+          return;
+        }
+
+        rl.close();
+        resolve(result.version);
+      });
+    };
+
+    askVersion();
   });
 }
 
@@ -394,6 +488,30 @@ async function publishAction(skillPath: string, options: PublishOptions): Promis
     // 2. Load skill
     const skill = validator.loadSkill(absolutePath);
 
+    // 2.5. Check version - prompt if missing and not in --yes/--dry-run mode
+    let userProvidedVersion = false;
+    const skillMdVersion =
+      skill.skillMd?.version || (skill.skillMd?.metadata?.version as string | undefined);
+    if (!skillMdVersion && skill.skillMd) {
+      if (options.yes || options.dryRun) {
+        // In --yes or --dry-run mode, continue with warning (handled by validator)
+        // Skip interactive prompt for non-interactive modes
+      } else {
+        // Prompt for version
+        const userVersion = await promptForVersion();
+        if (!userVersion) {
+          logger.log('Cancelled. Please add version to SKILL.md frontmatter and try again.');
+          return;
+        }
+        // Set the user-provided version to both skillMd and skillJson
+        skill.skillMd.version = userVersion;
+        if (skill.skillJson) {
+          skill.skillJson.version = userVersion;
+        }
+        userProvidedVersion = true;
+      }
+    }
+
     // 3. Validate
     const validation = validator.validate(absolutePath);
 
@@ -433,7 +551,7 @@ async function publishAction(skillPath: string, options: PublishOptions): Promis
     // All metadata from SKILL.md
     const displayName = skill.skillMd?.name || 'unknown';
     const displayVersion = skill.skillMd?.version || '0.0.0';
-    
+
     logger.newline();
     if (options.dryRun) {
       logger.log(`📦 Dry run: ${displayName}@${displayVersion}`);
@@ -444,8 +562,8 @@ async function publishAction(skillPath: string, options: PublishOptions): Promis
 
     displayValidation(skill, validation);
 
-    // Show warnings
-    displayWarnings(validation);
+    // Show warnings (skip version warning if user provided it interactively)
+    displayWarnings(validation, userProvidedVersion);
 
     // Show errors and exit if invalid
     if (!validation.valid) {
@@ -509,7 +627,7 @@ async function publishAction(skillPath: string, options: PublishOptions): Promis
         logger.error('Failed to build publish payload');
         process.exit(1);
       }
-      
+
       const result = await client.publish(skillName, payload, absolutePath, { tag: options.tag });
 
       if (!result.success || !result.data) {

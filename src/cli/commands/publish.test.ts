@@ -5,8 +5,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { isBlockedPublicRegistry, buildPublishSkillName, parseConfirmAnswer } from './publish.js';
 import { getScopeForRegistry } from '../../utils/registry-scope.js';
+import {
+  buildPublishSkillName,
+  isBlockedPublicRegistry,
+  parseConfirmAnswer,
+  parseVersionInput,
+} from './publish.js';
 
 describe('publish command', () => {
   // ============================================================================
@@ -131,11 +136,9 @@ describe('publish command', () => {
     describe('with unknown registry scope', () => {
       it('should throw error for unknown registry (no fallback)', () => {
         // Registry must be in REGISTRY_SCOPE_MAP, no fallback to userHandle
-        expect(() => buildPublishSkillName(
-          'my-skill',
-          'https://unknown-registry.com/',
-          'wangzirenbj',
-        )).toThrow('No scope configured for registry');
+        expect(() =>
+          buildPublishSkillName('my-skill', 'https://unknown-registry.com/', 'wangzirenbj'),
+        ).toThrow('No scope configured for registry');
       });
     });
 
@@ -254,6 +257,67 @@ describe('publish command', () => {
 
       it('should return true for "maybe"', () => {
         expect(parseConfirmAnswer('maybe')).toBe(true);
+      });
+    });
+  });
+
+  // ============================================================================
+  // parseVersionInput tests
+  // ============================================================================
+
+  describe('parseVersionInput', () => {
+    describe('valid version input', () => {
+      it('should accept valid semver version', () => {
+        const result = parseVersionInput('1.0.0');
+        expect(result).toEqual({ valid: true, version: '1.0.0' });
+      });
+
+      it('should accept version with prerelease tag', () => {
+        const result = parseVersionInput('1.0.0-beta.1');
+        expect(result).toEqual({ valid: true, version: '1.0.0-beta.1' });
+      });
+
+      it('should accept version with build metadata', () => {
+        const result = parseVersionInput('1.0.0+build.123');
+        expect(result).toEqual({ valid: true, version: '1.0.0+build.123' });
+      });
+
+      it('should trim whitespace from input', () => {
+        const result = parseVersionInput('  1.0.0  ');
+        expect(result).toEqual({ valid: true, version: '1.0.0' });
+      });
+    });
+
+    describe('empty input (cancel)', () => {
+      it('should return cancelled for empty string', () => {
+        const result = parseVersionInput('');
+        expect(result).toEqual({ valid: false, cancelled: true });
+      });
+
+      it('should return cancelled for whitespace only', () => {
+        const result = parseVersionInput('   ');
+        expect(result).toEqual({ valid: false, cancelled: true });
+      });
+    });
+
+    describe('invalid version input', () => {
+      it('should reject invalid semver', () => {
+        const result = parseVersionInput('invalid');
+        expect(result.valid).toBe(false);
+        expect(result.cancelled).toBeUndefined();
+        expect(result.error).toContain('Invalid version format');
+      });
+
+      it('should reject version with v prefix', () => {
+        const result = parseVersionInput('v1.0.0');
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('v');
+      });
+
+      it('should reject partial version', () => {
+        const result = parseVersionInput('1.0');
+        expect(result.valid).toBe(false);
+        expect(result.error).toBeDefined();
       });
     });
   });
