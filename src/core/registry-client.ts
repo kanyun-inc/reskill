@@ -55,6 +55,16 @@ export interface WhoamiResponse {
   };
 }
 
+export interface LoginCliResponse {
+  success: boolean;
+  error?: string;
+  user?: {
+    id: string;
+    handle: string;
+    email?: string;
+  };
+}
+
 export interface SkillMetadataResponse {
   name: string;
   'dist-tags': Record<string, string>;
@@ -122,6 +132,36 @@ export class RegistryClient {
     if (!response.ok) {
       throw new RegistryError(
         data.error || `Whoami failed: ${response.status}`,
+        response.status,
+        data,
+      );
+    }
+
+    return data;
+  }
+
+  /**
+   * CLI login - verify token and get user info
+   *
+   * Calls POST /api/auth/login-cli to validate the token and retrieve user information.
+   * This is the preferred method for CLI authentication.
+   *
+   * @returns User information if authentication succeeds
+   * @throws RegistryError if authentication fails
+   */
+  async loginCli(): Promise<LoginCliResponse> {
+    const url = `${this.config.registry}/api/auth/login-cli`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+
+    const data = (await response.json()) as LoginCliResponse;
+
+    if (!response.ok) {
+      throw new RegistryError(
+        data.error || `Login failed: ${response.status}`,
         response.status,
         data,
       );

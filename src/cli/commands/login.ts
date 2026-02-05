@@ -53,24 +53,27 @@ async function loginWithToken(
   logger.log(`Verifying token with ${registry}...`);
   logger.newline();
 
-  // Verify token by calling whoami
+  // Verify token by calling login-cli endpoint
   const client = new RegistryClient({ registry, token });
 
   try {
-    const response = await client.whoami();
+    const response = await client.loginCli();
 
     if (!response.success || !response.user) {
       logger.error(response.error || 'Token verification failed');
       process.exit(1);
     }
 
-    // Save token with handle (use user.handle, not user.id)
-    authManager.setToken(token, registry, undefined, response.user.handle);
+    // Save token with handle and email
+    authManager.setToken(token, registry, response.user.email, response.user.handle);
 
     logger.log('✓ Token verified and saved!');
     logger.newline();
     logger.log(`  Handle: @${response.user.handle}`);
     logger.log(`  Username: ${response.user.id}`);
+    if (response.user.email) {
+      logger.log(`  Email: ${response.user.email}`);
+    }
     logger.log(`  Registry: ${registry}`);
     logger.newline();
     logger.log(`Token saved to ${authManager.getConfigPath()}`);

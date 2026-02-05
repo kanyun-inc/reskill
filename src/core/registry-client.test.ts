@@ -219,6 +219,157 @@ describe('RegistryClient', () => {
   });
 
   // ============================================================================
+  // loginCli tests
+  // ============================================================================
+
+  describe('loginCli', () => {
+    it('should send POST request to /api/auth/login-cli', async () => {
+      client = new RegistryClient({ registry: testRegistry, token: testToken });
+
+      const mockResponse = {
+        success: true,
+        user: {
+          id: 'testuser',
+          handle: 'kanyun',
+          email: 'test@example.com',
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await client.loginCli();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/auth/login-cli`,
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            Authorization: `Bearer ${testToken}`,
+            'User-Agent': 'reskill/1.0',
+            'X-Client-Type': 'cli',
+          }),
+        }),
+      );
+
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should return user with id, handle and email', async () => {
+      client = new RegistryClient({ registry: testRegistry, token: testToken });
+
+      const mockResponse = {
+        success: true,
+        user: {
+          id: 'wangzirenbj',
+          handle: 'kanyun',
+          email: 'wangzirenbj@zhenguanyu.com',
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await client.loginCli();
+
+      expect(result.success).toBe(true);
+      expect(result.user?.id).toBe('wangzirenbj');
+      expect(result.user?.handle).toBe('kanyun');
+      expect(result.user?.email).toBe('wangzirenbj@zhenguanyu.com');
+    });
+
+    it('should return user without email when not provided', async () => {
+      client = new RegistryClient({ registry: testRegistry, token: testToken });
+
+      const mockResponse = {
+        success: true,
+        user: {
+          id: 'testuser',
+          handle: 'kanyun',
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await client.loginCli();
+
+      expect(result.success).toBe(true);
+      expect(result.user?.id).toBe('testuser');
+      expect(result.user?.handle).toBe('kanyun');
+      expect(result.user?.email).toBeUndefined();
+    });
+
+    it('should throw RegistryError on authentication failure', async () => {
+      client = new RegistryClient({ registry: testRegistry, token: 'invalid_token' });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ success: false, error: 'Invalid token' }),
+      });
+
+      try {
+        await client.loginCli();
+        expect.fail('Expected RegistryError to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(RegistryError);
+        expect((error as RegistryError).message).toBe('Invalid token');
+        expect((error as RegistryError).statusCode).toBe(401);
+      }
+    });
+
+    it('should throw RegistryError when token is missing', async () => {
+      client = new RegistryClient({ registry: testRegistry });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ success: false, error: 'Missing Authorization header' }),
+      });
+
+      await expect(client.loginCli()).rejects.toThrow('Missing Authorization header');
+    });
+
+    it('should use default error message when none provided', async () => {
+      client = new RegistryClient({ registry: testRegistry, token: testToken });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({}),
+      });
+
+      await expect(client.loginCli()).rejects.toThrow('Login failed: 500');
+    });
+
+    it('should handle rate limit error', async () => {
+      client = new RegistryClient({ registry: testRegistry, token: testToken });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        json: () => Promise.resolve({ success: false, error: 'Too many requests' }),
+      });
+
+      try {
+        await client.loginCli();
+        expect.fail('Expected RegistryError to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(RegistryError);
+        expect((error as RegistryError).message).toBe('Too many requests');
+        expect((error as RegistryError).statusCode).toBe(429);
+      }
+    });
+  });
+
+  // ============================================================================
   // createTarball tests
   // ============================================================================
 
