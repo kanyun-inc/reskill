@@ -753,7 +753,7 @@ export class SkillManager {
   > {
     const { listOnly = false, save = true, mode = 'symlink' } = options;
 
-    if (this.isRegistrySource(ref)) {
+    if (this.isRegistrySource(ref) || this.isHttpSource(ref)) {
       throw new Error(
         'Multi-skill install (--skill / --list) is only supported for Git repository references (e.g. github:user/repo or https://github.com/user/repo).',
       );
@@ -795,10 +795,13 @@ export class SkillManager {
 
     const baseRefForSave = this.config.normalizeSkillRef(refForResolve);
     const defaults = this.config.getDefaults();
+    // Only pass custom installDir to Installer; default '.skills' should use
+    // the Installer's built-in canonical path (.agents/skills/)
+    const customInstallDir = defaults.installDir !== '.skills' ? defaults.installDir : undefined;
     const installer = new Installer({
       cwd: this.projectRoot,
       global: this.isGlobal,
-      installDir: defaults.installDir,
+      installDir: customInstallDir,
     });
 
     const installed: Array<{ skill: InstalledSkill; results: Map<AgentType, InstallResult> }> = [];
