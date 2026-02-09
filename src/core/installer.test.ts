@@ -598,7 +598,7 @@ This is test content.
 
         const bridgePath = getBridgeRulePath('test-skill');
         const content = readFileSync(bridgePath, 'utf-8');
-        expect(content).toContain('description: Test skill for installer tests');
+        expect(content).toContain('description: "Test skill for installer tests"');
       });
 
       it('should include auto-generated marker in bridge file', async () => {

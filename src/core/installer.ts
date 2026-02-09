@@ -302,53 +302,52 @@ export class Installer {
     }
 
     try {
+      let result: InstallResult;
+
       // Copy mode: directly copy to agent location
       if (installMode === 'copy') {
         ensureDir(agentDir);
         remove(agentDir);
         copyDirectory(sourcePath, agentDir);
 
-        // Create Cursor bridge rule file (project-level only)
-        if (agentType === 'cursor' && !this.isGlobal) {
-          this.createCursorBridgeRule(sanitized, sourcePath);
-        }
-
-        return {
+        result = {
           success: true,
           path: agentDir,
           mode: 'copy',
         };
-      }
+      } else {
+        // Symlink mode: copy to canonical location, then create symlink
+        ensureDir(canonicalDir);
+        remove(canonicalDir);
+        copyDirectory(sourcePath, canonicalDir);
 
-      // Symlink mode: copy to canonical location, then create symlink
-      ensureDir(canonicalDir);
-      remove(canonicalDir);
-      copyDirectory(sourcePath, canonicalDir);
+        const symlinkCreated = await createSymlink(canonicalDir, agentDir);
 
-      const symlinkCreated = await createSymlink(canonicalDir, agentDir);
+        if (!symlinkCreated) {
+          // Symlink failed, fallback to copy
+          try {
+            remove(agentDir);
+          } catch {
+            // Ignore cleanup errors
+          }
+          ensureDir(agentDir);
+          copyDirectory(sourcePath, agentDir);
 
-      if (!symlinkCreated) {
-        // Symlink failed, fallback to copy
-        try {
-          remove(agentDir);
-        } catch {
-          // Ignore cleanup errors
+          result = {
+            success: true,
+            path: agentDir,
+            canonicalPath: canonicalDir,
+            mode: 'symlink',
+            symlinkFailed: true,
+          };
+        } else {
+          result = {
+            success: true,
+            path: agentDir,
+            canonicalPath: canonicalDir,
+            mode: 'symlink',
+          };
         }
-        ensureDir(agentDir);
-        copyDirectory(sourcePath, agentDir);
-
-        // Create Cursor bridge rule file (project-level only)
-        if (agentType === 'cursor' && !this.isGlobal) {
-          this.createCursorBridgeRule(sanitized, sourcePath);
-        }
-
-        return {
-          success: true,
-          path: agentDir,
-          canonicalPath: canonicalDir,
-          mode: 'symlink',
-          symlinkFailed: true,
-        };
       }
 
       // Create Cursor bridge rule file (project-level only)
@@ -356,12 +355,7 @@ export class Installer {
         this.createCursorBridgeRule(sanitized, sourcePath);
       }
 
-      return {
-        success: true,
-        path: agentDir,
-        canonicalPath: canonicalDir,
-        mode: 'symlink',
-      };
+      return result;
     } catch (error) {
       return {
         success: false,
@@ -498,8 +492,10 @@ export class Installer {
         }
       }
 
+      // Quote description to prevent YAML injection from special characters
+      const safeDescription = parsed.description.replace(/"/g, '\\"');
       const bridgeContent = `---
-description: ${parsed.description}
+description: "${safeDescription}"
 globs: 
 alwaysApply: false
 ---
