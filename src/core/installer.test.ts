@@ -563,6 +563,199 @@ This is test content.
   });
 
   // ============================================================================
+  // Cursor bridge rule file tests
+  // ============================================================================
+
+  describe('Cursor bridge rule files', () => {
+    const getBridgeRulePath = (skillName: string) =>
+      path.join(tempDir, '.cursor', 'rules', `${skillName}.mdc`);
+
+    const BRIDGE_MARKER = '<!-- reskill:auto-generated -->';
+
+    describe('install creates bridge file', () => {
+      it('should create .mdc bridge file when installing to cursor with copy mode', async () => {
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        expect(existsSync(bridgePath)).toBe(true);
+      });
+
+      it('should create .mdc bridge file when installing to cursor with symlink mode', async () => {
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'symlink',
+        });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        expect(existsSync(bridgePath)).toBe(true);
+      });
+
+      it('should include description from SKILL.md in bridge file', async () => {
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        const content = readFileSync(bridgePath, 'utf-8');
+        expect(content).toContain('description: "Test skill for installer tests"');
+      });
+
+      it('should include auto-generated marker in bridge file', async () => {
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        const content = readFileSync(bridgePath, 'utf-8');
+        expect(content).toContain(BRIDGE_MARKER);
+      });
+
+      it('should reference correct SKILL.md path in bridge file', async () => {
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        const content = readFileSync(bridgePath, 'utf-8');
+        expect(content).toContain('@file .cursor/skills/test-skill/SKILL.md');
+      });
+
+      it('should include alwaysApply: false in bridge file', async () => {
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        const content = readFileSync(bridgePath, 'utf-8');
+        expect(content).toContain('alwaysApply: false');
+      });
+
+      it('should create .cursor/rules/ directory if it does not exist', async () => {
+        const rulesDir = path.join(tempDir, '.cursor', 'rules');
+        expect(existsSync(rulesDir)).toBe(false);
+
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        expect(existsSync(rulesDir)).toBe(true);
+      });
+    });
+
+    describe('install does NOT create bridge file', () => {
+      it('should NOT create bridge file for non-cursor agents', async () => {
+        await installer.installForAgent(sourceDir, 'test-skill', 'claude-code', {
+          mode: 'copy',
+        });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        expect(existsSync(bridgePath)).toBe(false);
+      });
+
+      it('should NOT create bridge file for global installation', async () => {
+        const globalInstaller = new Installer({ cwd: tempDir, global: true });
+
+        await globalInstaller.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        expect(existsSync(bridgePath)).toBe(false);
+      });
+
+      it('should skip bridge file silently when SKILL.md has no frontmatter', async () => {
+        // Overwrite SKILL.md with no frontmatter
+        writeFileSync(path.join(sourceDir, 'SKILL.md'), '# Just content, no frontmatter');
+
+        const result = await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        expect(result.success).toBe(true);
+        const bridgePath = getBridgeRulePath('test-skill');
+        expect(existsSync(bridgePath)).toBe(false);
+      });
+    });
+
+    describe('uninstall removes bridge file', () => {
+      it('should remove bridge file when uninstalling from cursor', async () => {
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        expect(existsSync(bridgePath)).toBe(true);
+
+        installer.uninstallFromAgent('test-skill', 'cursor');
+        expect(existsSync(bridgePath)).toBe(false);
+      });
+
+      it('should NOT remove manually created .mdc without auto-generated marker', async () => {
+        // Manually create a .mdc file without the marker
+        const rulesDir = path.join(tempDir, '.cursor', 'rules');
+        mkdirSync(rulesDir, { recursive: true });
+        const bridgePath = getBridgeRulePath('test-skill');
+        writeFileSync(bridgePath, '---\ndescription: Manual rule\n---\n\nManual content');
+
+        // Install then uninstall
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+        installer.uninstallFromAgent('test-skill', 'cursor');
+
+        // Manually created .mdc should still exist
+        expect(existsSync(bridgePath)).toBe(true);
+        const content = readFileSync(bridgePath, 'utf-8');
+        expect(content).toContain('Manual content');
+      });
+
+      it('should NOT attempt to remove bridge file for non-cursor agents', async () => {
+        // Install to both cursor and claude-code
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', { mode: 'copy' });
+        await installer.installForAgent(sourceDir, 'test-skill', 'claude-code', { mode: 'copy' });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        expect(existsSync(bridgePath)).toBe(true);
+
+        // Uninstall only from claude-code
+        installer.uninstallFromAgent('test-skill', 'claude-code');
+
+        // Bridge file should still exist (only cursor uninstall removes it)
+        expect(existsSync(bridgePath)).toBe(true);
+      });
+    });
+
+    describe('reinstall overwrites bridge file', () => {
+      it('should overwrite bridge file with updated description on reinstall', async () => {
+        // First install
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        const bridgePath = getBridgeRulePath('test-skill');
+        const content1 = readFileSync(bridgePath, 'utf-8');
+        expect(content1).toContain('Test skill for installer tests');
+
+        // Update SKILL.md with new description
+        writeFileSync(
+          path.join(sourceDir, 'SKILL.md'),
+          '---\nname: test-skill\ndescription: Updated skill description\n---\n\n# Updated',
+        );
+
+        // Reinstall
+        await installer.installForAgent(sourceDir, 'test-skill', 'cursor', {
+          mode: 'copy',
+        });
+
+        const content2 = readFileSync(bridgePath, 'utf-8');
+        expect(content2).toContain('Updated skill description');
+        expect(content2).not.toContain('Test skill for installer tests');
+      });
+    });
+  });
+
+  // ============================================================================
   // Scoped skill name handling tests
   // ============================================================================
 

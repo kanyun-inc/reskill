@@ -221,6 +221,63 @@ describe('CLI Integration: uninstall', () => {
     });
   });
 
+  describe('Cursor bridge rule file cleanup', () => {
+    it('should remove auto-generated .mdc bridge file when uninstalling cursor skill', () => {
+      // Create skill in cursor agent directory
+      const agentSkillsDir = path.join(tempDir, '.cursor', 'skills');
+      createMockSkill(agentSkillsDir, 'test-skill');
+
+      // Create auto-generated bridge rule file
+      const rulesDir = path.join(tempDir, '.cursor', 'rules');
+      fs.mkdirSync(rulesDir, { recursive: true });
+      const bridgePath = path.join(rulesDir, 'test-skill.mdc');
+      fs.writeFileSync(
+        bridgePath,
+        `---
+description: A mock skill for testing
+globs: 
+alwaysApply: false
+---
+
+<!-- reskill:auto-generated -->
+@file .cursor/skills/test-skill/SKILL.md
+`,
+      );
+
+      expect(pathExists(bridgePath)).toBe(true);
+
+      // Uninstall
+      const { exitCode } = runCli('uninstall test-skill -y', tempDir);
+      expect(exitCode).toBe(0);
+
+      // Bridge file should be removed
+      expect(pathExists(bridgePath)).toBe(false);
+    });
+
+    it('should NOT remove manually created .mdc file without auto-generated marker', () => {
+      // Create skill in cursor agent directory
+      const agentSkillsDir = path.join(tempDir, '.cursor', 'skills');
+      createMockSkill(agentSkillsDir, 'test-skill');
+
+      // Create manually created rule file (no auto-generated marker)
+      const rulesDir = path.join(tempDir, '.cursor', 'rules');
+      fs.mkdirSync(rulesDir, { recursive: true });
+      const bridgePath = path.join(rulesDir, 'test-skill.mdc');
+      fs.writeFileSync(
+        bridgePath,
+        '---\ndescription: Manual rule\n---\n\nManual content',
+      );
+
+      // Uninstall
+      runCli('uninstall test-skill -y', tempDir);
+
+      // Manually created .mdc should still exist
+      expect(pathExists(bridgePath)).toBe(true);
+      const content = fs.readFileSync(bridgePath, 'utf-8');
+      expect(content).toContain('Manual content');
+    });
+  });
+
   describe('global uninstall', () => {
     let mockHome: string;
 
