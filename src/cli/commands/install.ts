@@ -641,7 +641,7 @@ async function installMultipleSkills(
   }
 
   // Display batch results
-  console.log();
+  p.log.message('');
   displayBatchInstallResults(successfulSkills, failedSkills, targetAgents.length);
 
   // Save installation defaults (only for project installs with success)

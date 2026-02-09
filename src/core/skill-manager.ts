@@ -1085,7 +1085,7 @@ export class SkillManager {
   }> {
     const { force = false, save = true, mode = 'symlink' } = options;
 
-    // Parse skill identifier (extract fullName and version)
+    // Parse skill identifier and resolve registry URL once (single source of truth)
     const parsed = parseSkillIdentifier(ref);
     const registryUrl = options.registry || getRegistryUrl(parsed.scope);
     const client = new RegistryClient({ registry: registryUrl });
@@ -1103,15 +1103,18 @@ export class SkillManager {
       }
     }
 
-    // Branch based on source_type
+    // Branch based on source_type (pass resolved registryUrl via options to avoid re-computation)
     const sourceType = skillInfo.source_type;
     if (sourceType && sourceType !== 'registry') {
-      return this.installFromWebPublished(skillInfo, parsed, targetAgents, options);
+      return this.installFromWebPublished(skillInfo, parsed, targetAgents, {
+        ...options,
+        registry: registryUrl,
+      });
     }
 
-    // 1. Resolve registry skill
+    // 1. Resolve registry skill (pass pre-resolved registryUrl)
     logger.package(`Resolving ${ref} from registry...`);
-    const resolved = await this.registryResolver.resolve(ref, options.registry);
+    const resolved = await this.registryResolver.resolve(ref, registryUrl);
     const {
       shortName,
       version,
@@ -1163,66 +1166,72 @@ export class SkillManager {
       `Installing ${shortName}@${version} from ${resolvedRegistryUrl} to ${targetAgents.length} agent(s)...`,
     );
 
-    // 3. Create temp directory for extraction
+    // 3. Create temp directory for extraction (clean stale files first)
     const tempDir = path.join(this.cache.getCacheDir(), 'registry-temp', `${shortName}-${version}`);
+    await remove(tempDir);
     await ensureDir(tempDir);
 
-    // 4. Extract tarball
-    const extractedPath = await this.registryResolver.extract(tarball, tempDir);
-    logger.debug(`Extracted to ${extractedPath}`);
+    try {
+      // 4. Extract tarball
+      const extractedPath = await this.registryResolver.extract(tarball, tempDir);
+      logger.debug(`Extracted to ${extractedPath}`);
 
-    // 5. Create Installer with custom installDir from config
-    const defaults = this.config.getDefaults();
-    const installer = new Installer({
-      cwd: this.projectRoot,
-      global: this.isGlobal,
-      installDir: defaults.installDir,
-    });
-
-    // 6. Install to all target agents
-    const results = await installer.installToAgents(extractedPath, shortName, targetAgents, {
-      mode: mode as InstallMode,
-    });
-
-    // 7. Update lock file (project mode only)
-    if (!this.isGlobal) {
-      this.lockManager.lockSkill(shortName, {
-        source: `registry:${resolvedParsed.fullName}`,
-        version,
-        ref: version,
-        resolved: resolvedRegistryUrl,
-        commit: resolved.integrity, // Use integrity as commit-like identifier
+      // 5. Create Installer with custom installDir from config
+      const defaults = this.config.getDefaults();
+      const installer = new Installer({
+        cwd: this.projectRoot,
+        global: this.isGlobal,
+        installDir: defaults.installDir,
       });
+
+      // 6. Install to all target agents
+      const results = await installer.installToAgents(extractedPath, shortName, targetAgents, {
+        mode: mode as InstallMode,
+      });
+
+      // 7. Update lock file (project mode only)
+      if (!this.isGlobal) {
+        this.lockManager.lockSkill(shortName, {
+          source: `registry:${resolvedParsed.fullName}`,
+          version,
+          ref: version,
+          resolved: resolvedRegistryUrl,
+          commit: resolved.integrity, // Use integrity as commit-like identifier
+        });
+      }
+
+      // 8. Update skills.json (project mode only)
+      if (!this.isGlobal && save) {
+        this.config.ensureExists();
+        // Save with full name for registry skills
+        this.config.addSkill(shortName, ref);
+      }
+
+      // 9. Count results and log
+      const successCount = Array.from(results.values()).filter((r) => r.success).length;
+      const failCount = results.size - successCount;
+
+      if (failCount === 0) {
+        logger.success(`Installed ${shortName}@${version} to ${successCount} agent(s)`);
+      } else {
+        logger.warn(
+          `Installed ${shortName}@${version} to ${successCount} agent(s), ${failCount} failed`,
+        );
+      }
+
+      // 10. Build the InstalledSkill to return
+      const skill: InstalledSkill = {
+        name: shortName,
+        path: extractedPath,
+        version,
+        source: `registry:${resolvedParsed.fullName}`,
+      };
+
+      return { skill, results };
+    } finally {
+      // Clean up temp directory after installation
+      await remove(tempDir);
     }
-
-    // 8. Update skills.json (project mode only)
-    if (!this.isGlobal && save) {
-      this.config.ensureExists();
-      // Save with full name for registry skills
-      this.config.addSkill(shortName, ref);
-    }
-
-    // 9. Count results and log
-    const successCount = Array.from(results.values()).filter((r) => r.success).length;
-    const failCount = results.size - successCount;
-
-    if (failCount === 0) {
-      logger.success(`Installed ${shortName}@${version} to ${successCount} agent(s)`);
-    } else {
-      logger.warn(
-        `Installed ${shortName}@${version} to ${successCount} agent(s), ${failCount} failed`,
-      );
-    }
-
-    // 10. Build the InstalledSkill to return
-    const skill: InstalledSkill = {
-      name: shortName,
-      path: extractedPath,
-      version,
-      source: `registry:${resolvedParsed.fullName}`,
-    };
-
-    return { skill, results };
   }
 
   // ============================================================================
@@ -1278,7 +1287,7 @@ export class SkillManager {
 
       case 'local':
         // Download tarball via Registry API
-        return this.installFromRegistryLocal(skillInfo, parsed, targetAgents, options);
+        return this.installFromRegistryLocal(parsed, targetAgents, options);
 
       default:
         throw new Error(`Unknown source_type: ${source_type}`);
@@ -1292,7 +1301,6 @@ export class SkillManager {
    * then extracts and installs using the same flow as registry source_type.
    */
   private async installFromRegistryLocal(
-    _skillInfo: SkillInfo,
     parsed: ReturnType<typeof parseSkillIdentifier>,
     targetAgents: AgentType[],
     options: InstallOptions = {},
@@ -1313,54 +1321,61 @@ export class SkillManager {
       `Installing ${shortName} from ${registryUrl} to ${targetAgents.length} agent(s)...`,
     );
 
-    // Extract tarball to temp directory
+    // Extract tarball to temp directory (clean stale files first)
     const tempDir = path.join(this.cache.getCacheDir(), 'registry-temp', `${shortName}-${version}`);
+    await remove(tempDir);
     await ensureDir(tempDir);
-    const extractedPath = await this.registryResolver.extract(tarball, tempDir);
-    logger.debug(`Extracted to ${extractedPath}`);
 
-    // Install to all target agents
-    const defaults = this.config.getDefaults();
-    const installer = new Installer({
-      cwd: this.projectRoot,
-      global: this.isGlobal,
-      installDir: defaults.installDir,
-    });
-    const results = await installer.installToAgents(extractedPath, shortName, targetAgents, {
-      mode: mode as InstallMode,
-    });
+    try {
+      const extractedPath = await this.registryResolver.extract(tarball, tempDir);
+      logger.debug(`Extracted to ${extractedPath}`);
 
-    // Get metadata from extracted path
-    const metadata = this.getSkillMetadataFromDir(extractedPath);
-    const skillName = metadata?.name ?? shortName;
-    const semanticVersion = metadata?.version ?? version;
-
-    // Update lock file (project mode only)
-    if (!this.isGlobal) {
-      this.lockManager.lockSkill(skillName, {
-        source: `registry:${parsed.fullName}`,
-        version: semanticVersion,
-        ref: version,
-        resolved: registryUrl,
-        commit: '', // Local-published skills have no commit hash
+      // Install to all target agents
+      const defaults = this.config.getDefaults();
+      const installer = new Installer({
+        cwd: this.projectRoot,
+        global: this.isGlobal,
+        installDir: defaults.installDir,
       });
-    }
+      const results = await installer.installToAgents(extractedPath, shortName, targetAgents, {
+        mode: mode as InstallMode,
+      });
 
-    // Update skills.json (project mode only)
-    if (!this.isGlobal && save) {
-      this.config.ensureExists();
-      this.config.addSkill(skillName, parsed.fullName);
-    }
+      // Get metadata from extracted path
+      const metadata = this.getSkillMetadataFromDir(extractedPath);
+      const skillName = metadata?.name ?? shortName;
+      const semanticVersion = metadata?.version ?? version;
 
-    return {
-      skill: {
-        name: skillName,
-        path: extractedPath,
-        version: semanticVersion,
-        source: `registry:${parsed.fullName}`,
-      },
-      results,
-    };
+      // Update lock file (project mode only)
+      if (!this.isGlobal) {
+        this.lockManager.lockSkill(skillName, {
+          source: `registry:${parsed.fullName}`,
+          version: semanticVersion,
+          ref: version,
+          resolved: registryUrl,
+          commit: '', // Local-published skills have no commit hash
+        });
+      }
+
+      // Update skills.json (project mode only)
+      if (!this.isGlobal && save) {
+        this.config.ensureExists();
+        this.config.addSkill(skillName, parsed.fullName);
+      }
+
+      return {
+        skill: {
+          name: skillName,
+          path: extractedPath,
+          version: semanticVersion,
+          source: `registry:${parsed.fullName}`,
+        },
+        results,
+      };
+    } finally {
+      // Clean up temp directory after installation
+      await remove(tempDir);
+    }
   }
 
   /**

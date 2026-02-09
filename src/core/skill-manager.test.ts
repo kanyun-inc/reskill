@@ -1309,11 +1309,12 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
       fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), '# Skill');
       vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
 
-      // No registry option — should use scope-based lookup
+      // No registry option — should resolve URL from scope at the entry point
       await manager.installToAgents('@kanyun/scope-skill', ['cursor']);
 
-      // resolve should be called with undefined as overrideRegistryUrl
-      expect(resolveSpy).toHaveBeenCalledWith('@kanyun/scope-skill', undefined);
+      // resolve should receive the pre-resolved registry URL (not undefined)
+      // because installToAgentsFromRegistry resolves the URL once and passes it down
+      expect(resolveSpy).toHaveBeenCalledWith('@kanyun/scope-skill', 'https://rush.zhenguanyu.com/');
     });
   });
 });
