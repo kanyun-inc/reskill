@@ -58,6 +58,14 @@ export interface ParsedSkill {
 }
 
 /**
+ * Parsed skill with its directory path (for multi-skill discovery)
+ */
+export interface ParsedSkillWithPath extends ParsedSkill {
+  /** Absolute path to the skill directory (containing SKILL.md) */
+  dirPath: string;
+}
+
+/**
  * Skill validation error
  */
 export class SkillValidationError extends Error {
@@ -377,6 +385,149 @@ export function hasValidSkillMd(dirPath: string): boolean {
   }
 }
 
+const SKIP_DIRS = ['node_modules', '.git', 'dist', 'build', '__pycache__'];
+const MAX_DISCOVER_DEPTH = 5;
+
+const PRIORITY_SKILL_DIRS = [
+  'skills',
+  '.agents/skills',
+  '.cursor/skills',
+  '.claude/skills',
+  '.windsurf/skills',
+  '.github/skills',
+];
+
+function findSkillDirsRecursive(
+  dir: string,
+  depth: number,
+  maxDepth: number,
+  visitedDirs: Set<string>,
+): string[] {
+  if (depth > maxDepth) return [];
+
+  const resolvedDir = path.resolve(dir);
+  if (visitedDirs.has(resolvedDir)) return [];
+
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+    return [];
+  }
+
+  visitedDirs.add(resolvedDir);
+
+  const results: string[] = [];
+  let entries: string[];
+
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+
+  for (const entry of entries) {
+    if (SKIP_DIRS.includes(entry)) continue;
+    const fullPath = path.join(dir, entry);
+    const resolvedFull = path.resolve(fullPath);
+    if (visitedDirs.has(resolvedFull)) continue;
+
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(fullPath);
+    } catch {
+      continue;
+    }
+    if (!stat.isDirectory()) continue;
+
+    if (hasValidSkillMd(fullPath)) {
+      results.push(fullPath);
+    }
+    results.push(...findSkillDirsRecursive(fullPath, depth + 1, maxDepth, visitedDirs));
+  }
+
+  return results;
+}
+
+/**
+ * Discover all skills in a directory by scanning for SKILL.md files.
+ *
+ * Strategy:
+ * 1. Check root for SKILL.md
+ * 2. Search priority directories (skills/, .agents/skills/, .cursor/skills/, etc.)
+ * 3. Fall back to recursive search (max depth 5, skip node_modules, .git, dist, etc.)
+ *
+ * @param basePath - Root directory to search
+ * @returns List of parsed skills with their directory paths (absolute)
+ */
+export function discoverSkillsInDir(basePath: string): ParsedSkillWithPath[] {
+  const resolvedBase = path.resolve(basePath);
+  const results: ParsedSkillWithPath[] = [];
+  const seenNames = new Set<string>();
+
+  function addSkill(dirPath: string): void {
+    const skill = parseSkillFromDir(dirPath);
+    if (skill && !seenNames.has(skill.name)) {
+      seenNames.add(skill.name);
+      results.push({
+        ...skill,
+        dirPath: path.resolve(dirPath),
+      });
+    }
+  }
+
+  if (hasValidSkillMd(resolvedBase)) {
+    addSkill(resolvedBase);
+  }
+
+  // Track visited directories to avoid redundant I/O during recursive scan
+  const visitedDirs = new Set<string>();
+
+  for (const sub of PRIORITY_SKILL_DIRS) {
+    const dir = path.join(resolvedBase, sub);
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+    visitedDirs.add(path.resolve(dir));
+    try {
+      const entries = fs.readdirSync(dir);
+      for (const entry of entries) {
+        const skillDir = path.join(dir, entry);
+        try {
+          if (fs.statSync(skillDir).isDirectory() && hasValidSkillMd(skillDir)) {
+            addSkill(skillDir);
+            visitedDirs.add(path.resolve(skillDir));
+          }
+        } catch {
+          // Skip entries that can't be stat'd (race condition, permission, etc.)
+        }
+      }
+    } catch {
+      // Skip if unreadable
+    }
+  }
+
+  const recursiveDirs = findSkillDirsRecursive(resolvedBase, 0, MAX_DISCOVER_DEPTH, visitedDirs);
+  for (const skillDir of recursiveDirs) {
+    addSkill(skillDir);
+  }
+
+  return results;
+}
+
+/**
+ * Filter skills by name (case-insensitive exact match).
+ *
+ * Note: an empty `names` array returns an empty result (not all skills).
+ * Callers should check `names.length` before calling if "no filter = all" is desired.
+ *
+ * @param skills - List of discovered skills
+ * @param names - Skill names to match (e.g. from --skill pdf commit)
+ * @returns Skills whose name matches any of the given names
+ */
+export function filterSkillsByName(
+  skills: ParsedSkillWithPath[],
+  names: string[],
+): ParsedSkillWithPath[] {
+  const normalized = names.map((n) => n.toLowerCase());
+  return skills.filter((skill) => normalized.includes(skill.name.toLowerCase()));
+}
+
 /**
  * Generate SKILL.md content
  */
@@ -409,6 +560,8 @@ export default {
   parseSkillMdFile,
   parseSkillFromDir,
   hasValidSkillMd,
+  discoverSkillsInDir,
+  filterSkillsByName,
   validateSkillName,
   validateSkillDescription,
   generateSkillMd,

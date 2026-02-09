@@ -26,7 +26,12 @@ import { Installer, type InstallMode, type InstallResult } from './installer.js'
 import { LockManager } from './lock-manager.js';
 import { RegistryClient, RegistryError } from './registry-client.js';
 import { RegistryResolver } from './registry-resolver.js';
-import { parseSkillFromDir } from './skill-parser.js';
+import {
+  discoverSkillsInDir,
+  filterSkillsByName,
+  type ParsedSkillWithPath,
+  parseSkillFromDir,
+} from './skill-parser.js';
 
 /**
  * SkillManager configuration options
@@ -729,6 +734,151 @@ export class SkillManager {
   }
 
   /**
+   * Multi-skill install: discover skills in a Git repo and install selected ones (or list only).
+   * Only Git references are supported (including https://github.com/...); registry refs are not.
+   *
+   * @param ref - Git skill reference (e.g. github:user/repo@v1.0.0 or https://github.com/user/repo); any #fragment is stripped for resolution
+   * @param skillNames - If non-empty, install only these skills (by SKILL.md name). If empty and !listOnly, install all.
+   * @param targetAgents - Target agents
+   * @param options - Install options; listOnly: true means discover and return skills without installing
+   */
+  async installSkillsFromRepo(
+    ref: string,
+    skillNames: string[],
+    targetAgents: AgentType[],
+    options: InstallOptions & { listOnly?: boolean } = {},
+  ): Promise<
+    | { listOnly: true; skills: ParsedSkillWithPath[] }
+    | {
+        listOnly: false;
+        installed: Array<{
+          skill: InstalledSkill;
+          results: Map<AgentType, InstallResult>;
+        }>;
+        skipped: Array<{ name: string; reason: string }>;
+      }
+  > {
+    const { listOnly = false, force = false, save = true, mode = 'symlink' } = options;
+
+    const refForResolve = ref.replace(/#.*$/, '').trim();
+    const resolved = await this.resolver.resolve(refForResolve);
+    const { parsed, repoUrl } = resolved;
+    const gitRef = resolved.ref;
+
+    let cacheResult = await this.cache.get(parsed, gitRef);
+    if (!cacheResult) {
+      logger.debug(`Caching from ${repoUrl}@${gitRef}`);
+      cacheResult = await this.cache.cache(repoUrl, parsed, gitRef, gitRef);
+    }
+
+    const cachePath = this.cache.getCachePath(parsed, gitRef);
+    const discovered = discoverSkillsInDir(cachePath);
+
+    if (discovered.length === 0) {
+      throw new Error(
+        'No valid skills found. Skills require a SKILL.md with name and description.',
+      );
+    }
+
+    if (listOnly) {
+      return { listOnly: true, skills: discovered };
+    }
+
+    const selected =
+      skillNames.length > 0 ? filterSkillsByName(discovered, skillNames) : discovered;
+
+    if (skillNames.length > 0 && selected.length === 0) {
+      const available = discovered.map((s) => s.name).join(', ');
+      throw new Error(
+        `No matching skills found for: ${skillNames.join(', ')}. Available skills: ${available}`,
+      );
+    }
+
+    const baseRefForSave = this.config.normalizeSkillRef(refForResolve);
+    const defaults = this.config.getDefaults();
+    // Only pass custom installDir to Installer; default '.skills' should use
+    // the Installer's built-in canonical path (.agents/skills/)
+    const customInstallDir = defaults.installDir !== '.skills' ? defaults.installDir : undefined;
+    const installer = new Installer({
+      cwd: this.projectRoot,
+      global: this.isGlobal,
+      installDir: customInstallDir,
+    });
+
+    const installed: Array<{
+      skill: InstalledSkill;
+      results: Map<AgentType, InstallResult>;
+    }> = [];
+    const skipped: Array<{ name: string; reason: string }> = [];
+
+    const skillSource = `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? `/${parsed.subPath}` : ''}`;
+
+    for (const skillInfo of selected) {
+      const semanticVersion = skillInfo.version ?? gitRef;
+
+      // Skip already-installed skills unless --force is set
+      if (!force) {
+        const existingSkill = this.getInstalledSkill(skillInfo.name);
+        if (existingSkill) {
+          const locked = this.lockManager.get(skillInfo.name);
+          const lockedRef = locked?.ref || locked?.version;
+          if (lockedRef === gitRef) {
+            const reason = `already installed at ${gitRef}`;
+            logger.info(`${skillInfo.name}@${gitRef} is already installed, skipping`);
+            skipped.push({ name: skillInfo.name, reason });
+            continue;
+          }
+          // Different version installed — allow upgrade without --force
+          // Only skip when the exact same ref is already locked
+        }
+      }
+
+      logger.package(
+        `Installing ${skillInfo.name}@${gitRef} to ${targetAgents.length} agent(s)...`,
+      );
+
+      // Note: force is handled at the SkillManager level (skip-if-installed check above).
+      // The Installer always overwrites (remove + copy), so no force flag is needed there.
+      const results = await installer.installToAgents(
+        skillInfo.dirPath,
+        skillInfo.name,
+        targetAgents,
+        { mode: mode as InstallMode },
+      );
+
+      if (!this.isGlobal) {
+        this.lockManager.lockSkill(skillInfo.name, {
+          source: skillSource,
+          version: semanticVersion,
+          ref: gitRef,
+          resolved: repoUrl,
+          commit: cacheResult.commit,
+        });
+      }
+
+      if (!this.isGlobal && save) {
+        this.config.ensureExists();
+        this.config.addSkill(skillInfo.name, `${baseRefForSave}#${skillInfo.name}`);
+      }
+
+      const successCount = Array.from(results.values()).filter((r) => r.success).length;
+      logger.success(`Installed ${skillInfo.name}@${semanticVersion} to ${successCount} agent(s)`);
+
+      installed.push({
+        skill: {
+          name: skillInfo.name,
+          path: skillInfo.dirPath,
+          version: semanticVersion,
+          source: skillSource,
+        },
+        results,
+      });
+    }
+
+    return { listOnly: false, installed, skipped };
+  }
+
+  /**
    * Install skill from Git to multiple agents
    */
   private async installToAgentsFromGit(
@@ -938,7 +1088,10 @@ export class SkillManager {
     // 解析 skill 标识（获取 fullName 和 version）
     const parsed = parseSkillIdentifier(ref);
     const registryUrl = getRegistryUrl(parsed.scope);
-    const client = new RegistryClient({ registry: registryUrl, apiPrefix: getApiPrefix(registryUrl) });
+    const client = new RegistryClient({
+      registry: registryUrl,
+      apiPrefix: getApiPrefix(registryUrl),
+    });
 
     // 新增：先查询 skill 信息获取 source_type
     let skillInfo: SkillInfo;

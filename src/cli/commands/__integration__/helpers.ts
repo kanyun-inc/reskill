@@ -244,6 +244,58 @@ This is an example rule for testing.
 }
 
 /**
+ * Create a local git repository containing multiple skills (for --skill integration tests).
+ *
+ * Structure: repo-root/skills/<name>/SKILL.md
+ * Uses file:// protocol; no network required.
+ *
+ * @param dir - Parent directory to create the repo in
+ * @param repoName - Repository directory name
+ * @param skills - Array of { name, description } for each skill
+ * @param version - Git tag version (default "1.0.0")
+ * @returns file:// URL of the repo
+ */
+export function createLocalMultiSkillRepo(
+  dir: string,
+  repoName: string,
+  skills: Array<{ name: string; description?: string }>,
+  version = '1.0.0',
+): string {
+  const repoDir = path.join(dir, `${repoName}-repo`);
+  fs.mkdirSync(repoDir, { recursive: true });
+
+  const skillsDir = path.join(repoDir, 'skills');
+  fs.mkdirSync(skillsDir, { recursive: true });
+
+  for (const s of skills) {
+    const skillDir = path.join(skillsDir, s.name);
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(skillDir, 'SKILL.md'),
+      `---
+name: ${s.name}
+description: ${s.description ?? `Skill ${s.name}`}
+version: ${version}
+---
+
+# ${s.name}
+
+A mock skill for testing.
+`,
+    );
+  }
+
+  execSync('git init -b main', { cwd: repoDir, stdio: 'pipe' });
+  execSync('git config user.email "test@test.com"', { cwd: repoDir, stdio: 'pipe' });
+  execSync('git config user.name "Test User"', { cwd: repoDir, stdio: 'pipe' });
+  execSync('git add -A', { cwd: repoDir, stdio: 'pipe' });
+  execSync(`git commit -m "Initial commit v${version}"`, { cwd: repoDir, stdio: 'pipe' });
+  execSync(`git tag v${version}`, { cwd: repoDir, stdio: 'pipe' });
+
+  return `file://${repoDir}`;
+}
+
+/**
  * Update a local git repo with a new version
  *
  * @param repoUrl - file:// URL of the repo

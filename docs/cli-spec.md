@@ -103,6 +103,28 @@ reskill install github:user/skill1 github:user/skill2@v1.0.0 gitlab:team/skill3
 | `--mode <mode>` | `symlink` | Installation mode: `symlink` or `copy` |
 | `-y, --yes` | `false` | Skip confirmation prompts |
 | `--all` | `false` | Install to all agents (implies `-y -g`) |
+| `-s, --skill <names...>` | - | Select specific skill(s) by name from a multi-skill repository (Git/HTTP only) |
+| `--list` | `false` | With a single repo ref: list available skills in the repository without installing |
+
+### Multi-skill repository (`--skill`)
+
+When the first argument is a single repository reference (Git or HTTP), `--skill` enables installing only selected skills from that repository.
+
+- **`reskill install <repoRef> --skill <name>`** — Install one skill by name (case-insensitive match against SKILL.md `name`).
+- **`reskill install <repoRef> --skill <name1> <name2> ...`** — Install multiple named skills.
+- **`reskill install <repoRef> --list`** — Discover and list all skills in the repository (no install). May be combined with `--skill` to list then exit.
+
+Skill discovery scans the cached repo for `SKILL.md` files (priority dirs: `skills/`, `.agents/skills/`, `.cursor/skills/`, etc.; then recursive up to 5 levels, excluding `node_modules`, `.git`, `dist`). Each installed skill is saved to `skills.json` with a ref of the form `ref#skillName` (e.g. `github:org/repo@v1.0.0#pdf`).
+
+| Scenario | Expected Behavior | Exit Code |
+|----------|-------------------|-----------|
+| `install <repo> --skill pdf` | Clone/cache repo, discover skills, install only `pdf`, save as `ref#pdf` | `0` |
+| `install <repo> --skill pdf commit` | Install `pdf` and `commit` only; each in `skills.json` and `skills.lock` | `0` |
+| `install <repo> --list` | List available skill names (and descriptions), no install | `0` |
+| `install <repo> --skill nonexistent` | Error: no matching skill; list available skill names | `1` |
+| Repo has no SKILL.md | Error: no valid skills found | `1` |
+
+`--skill` applies only when exactly one skill reference is given. Multiple refs (e.g. `install ref1 ref2`) continue to mean "install ref1 and ref2" as separate skills; `--skill` is ignored in that case.
 
 ### Agent Resolution Priority
 
@@ -130,6 +152,10 @@ reskill install github:user/skill1 github:user/skill2@v1.0.0 gitlab:team/skill3
 | Invalid agent name | Error with valid agent list | `1` |
 | Reinstall all + `--global` | Error: Cannot install all globally | `1` |
 | Some skills fail | Install successful ones, report failures, exit with `1` if any failed | `1` |
+| Single ref + `--skill <names>` | Multi-skill path: discover skills in repo, filter by name, install each; save as `ref#name` | `0` or `1` |
+| Single ref + `--list` | List discovered skill names (no install) | `0` |
+| Single ref + `--skill` but no match | Error, list available skill names | `1` |
+| Single ref + `--skill`, repo has no SKILL.md | Error: no valid skills found | `1` |
 
 ### Skill Reference Formats
 

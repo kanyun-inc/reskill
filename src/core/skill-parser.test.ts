@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  discoverSkillsInDir,
+  filterSkillsByName,
   parseSkillFromDir,
   parseSkillMd,
   SkillValidationError,
@@ -386,6 +388,174 @@ This skill has all optional fields.
       expect(result?.license).toBe('MIT');
       expect(result?.compatibility).toBe('cursor, claude-code');
       expect(result?.allowedTools).toEqual(['Read', 'Write']);
+    });
+  });
+
+  describe('discoverSkillsInDir', () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+      tempDir = mkdtempSync(path.join(tmpdir(), 'skill-discover-'));
+    });
+
+    afterEach(() => {
+      rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('should return empty array when no SKILL.md exists', () => {
+      const result = discoverSkillsInDir(tempDir);
+      expect(result).toEqual([]);
+    });
+
+    it('should discover single skill at root', () => {
+      const skillMd = `---
+name: root-skill
+description: Skill at root
+---
+
+Content.
+`;
+      writeFileSync(path.join(tempDir, 'SKILL.md'), skillMd);
+      const result = discoverSkillsInDir(tempDir);
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('root-skill');
+      expect(result[0].dirPath).toBe(path.resolve(tempDir));
+    });
+
+    it('should discover skills in skills/ subdirectory', () => {
+      const skillsDir = path.join(tempDir, 'skills');
+      mkdirSync(skillsDir, { recursive: true });
+      const pdfDir = path.join(skillsDir, 'pdf');
+      mkdirSync(pdfDir, { recursive: true });
+      writeFileSync(
+        path.join(pdfDir, 'SKILL.md'),
+        `---
+name: pdf
+description: PDF skill
+---
+
+Content.
+`,
+      );
+      const commitDir = path.join(skillsDir, 'commit');
+      mkdirSync(commitDir, { recursive: true });
+      writeFileSync(
+        path.join(commitDir, 'SKILL.md'),
+        `---
+name: commit
+description: Commit skill
+---
+
+Content.
+`,
+      );
+      const result = discoverSkillsInDir(tempDir);
+      expect(result).toHaveLength(2);
+      const names = result.map((s) => s.name).sort();
+      expect(names).toEqual(['commit', 'pdf']);
+      expect(result.every((s) => s.dirPath.startsWith(path.resolve(tempDir)))).toBe(true);
+    });
+
+    it('should discover skills recursively when not in priority dirs', () => {
+      const nestedDir = path.join(tempDir, 'packages', 'a', 'b', 'skill');
+      mkdirSync(nestedDir, { recursive: true });
+      writeFileSync(
+        path.join(nestedDir, 'SKILL.md'),
+        `---
+name: nested-skill
+description: Nested
+---
+
+Content.
+`,
+      );
+      const result = discoverSkillsInDir(tempDir);
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('nested-skill');
+      expect(result[0].dirPath).toBe(path.resolve(nestedDir));
+    });
+
+    it('should skip node_modules and .git', () => {
+      const skipDir = path.join(tempDir, 'node_modules', 'some-pkg');
+      mkdirSync(skipDir, { recursive: true });
+      writeFileSync(
+        path.join(skipDir, 'SKILL.md'),
+        `---
+name: ignored
+description: Should be ignored
+---
+
+Content.
+`,
+      );
+      const result = discoverSkillsInDir(tempDir);
+      expect(result).toHaveLength(0);
+    });
+
+    it('should deduplicate by skill name', () => {
+      writeFileSync(
+        path.join(tempDir, 'SKILL.md'),
+        `---
+name: same-name
+description: Root
+---
+
+Root.
+`,
+      );
+      const skillsDir = path.join(tempDir, 'skills', 'dup');
+      mkdirSync(skillsDir, { recursive: true });
+      writeFileSync(
+        path.join(skillsDir, 'SKILL.md'),
+        `---
+name: same-name
+description: Duplicate name
+---
+
+Dup.
+`,
+      );
+      const result = discoverSkillsInDir(tempDir);
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('same-name');
+    });
+  });
+
+  describe('filterSkillsByName', () => {
+    it('should return empty when no names given', () => {
+      const skills = [
+        { name: 'pdf', description: 'x', content: '', rawContent: '', dirPath: '/a/pdf' },
+      ] as Parameters<typeof filterSkillsByName>[0];
+      expect(filterSkillsByName(skills, [])).toEqual([]);
+    });
+
+    it('should filter by single name (case-insensitive)', () => {
+      const skills = [
+        { name: 'pdf', description: 'x', content: '', rawContent: '', dirPath: '/a/pdf' },
+        { name: 'commit', description: 'x', content: '', rawContent: '', dirPath: '/a/commit' },
+      ] as Parameters<typeof filterSkillsByName>[0];
+      expect(filterSkillsByName(skills, ['PDF'])).toHaveLength(1);
+      expect(filterSkillsByName(skills, ['PDF'])[0].name).toBe('pdf');
+      expect(filterSkillsByName(skills, ['commit'])).toHaveLength(1);
+      expect(filterSkillsByName(skills, ['commit'])[0].name).toBe('commit');
+    });
+
+    it('should filter by multiple names', () => {
+      const skills = [
+        { name: 'pdf', description: 'x', content: '', rawContent: '', dirPath: '/a/pdf' },
+        { name: 'commit', description: 'x', content: '', rawContent: '', dirPath: '/a/commit' },
+        { name: 'pr-review', description: 'x', content: '', rawContent: '', dirPath: '/a/pr' },
+      ] as Parameters<typeof filterSkillsByName>[0];
+      const filtered = filterSkillsByName(skills, ['pdf', 'pr-review']);
+      expect(filtered).toHaveLength(2);
+      expect(filtered.map((s) => s.name).sort()).toEqual(['pdf', 'pr-review']);
+    });
+
+    it('should return empty when no names match', () => {
+      const skills = [
+        { name: 'pdf', description: 'x', content: '', rawContent: '', dirPath: '/a/pdf' },
+      ] as Parameters<typeof filterSkillsByName>[0];
+      expect(filterSkillsByName(skills, ['nonexistent'])).toEqual([]);
     });
   });
 

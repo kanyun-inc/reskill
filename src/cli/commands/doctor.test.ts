@@ -943,12 +943,12 @@ describe('checkSkillRefs', () => {
     expect(results).toEqual([]);
   });
 
-  it('should provide HTTP-specific hint for invalid HTTP refs', () => {
+  it('should provide HTTP-specific hint for invalid HTTP archive refs', () => {
     writeFileSync(
       join(testDir, 'skills.json'),
       JSON.stringify({
         skills: {
-          'bad-http-skill': 'https://',
+          'bad-http-skill': 'https://exa mple.com/skill.tar.gz',
         },
       }),
     );
@@ -957,6 +957,22 @@ describe('checkSkillRefs', () => {
     expect(results[0].status).toBe('error');
     expect(results[0].hint).toContain('https://');
     expect(results[0].hint).toContain('oss://');
+  });
+
+  it('should validate bare HTTPS URLs as Git refs (not HTTP)', () => {
+    writeFileSync(
+      join(testDir, 'skills.json'),
+      JSON.stringify({
+        skills: {
+          'https-skill': 'https://',
+        },
+      }),
+    );
+    const results = checkSkillRefs(testDir);
+    expect(results.length).toBe(1);
+    expect(results[0].status).toBe('error');
+    // Now treated as invalid Git ref, not HTTP
+    expect(results[0].hint).toContain('registry:owner/repo');
   });
 });
 

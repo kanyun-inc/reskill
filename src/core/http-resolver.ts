@@ -41,33 +41,43 @@ export class HttpResolver {
    * Check if a reference is an HTTP/OSS URL (for archive downloads)
    *
    * Returns true for:
-   * - http:// or https:// URLs pointing to archive files (.tar.gz, .tgz, .zip, .tar)
-   * - Explicit oss:// or s3:// protocol URLs
+   * - http:// or https:// URLs with archive file extensions (.tar.gz, .tgz, .zip, .tar)
+   * - Explicit oss:// or s3:// protocol URLs (always treated as archive sources)
    *
    * Returns false for:
    * - Git repository URLs (*.git)
    * - GitHub/GitLab web URLs (/tree/, /blob/, /raw/)
+   * - Bare HTTPS repo URLs without archive extensions (e.g., https://github.com/user/repo)
+   *   These are treated as Git references and handled by GitResolver.
    */
   static isHttpUrl(ref: string): boolean {
     // Remove version suffix for checking (e.g., url@v1.0.0)
     const urlPart = ref.split('@')[0];
 
-    // 排除 Git 仓库 URL（以 .git 结尾）
-    if (urlPart.endsWith('.git')) {
-      return false;
+    // oss:// and s3:// are always archive download sources
+    if (urlPart.startsWith('oss://') || urlPart.startsWith('s3://')) {
+      return true;
     }
 
-    // 排除 GitHub/GitLab web URL（包含 /tree/, /blob/, /raw/）
-    if (/\/(tree|blob|raw)\//.test(urlPart)) {
-      return false;
+    // For http:// and https:// URLs, distinguish between Git repos and archive downloads
+    if (urlPart.startsWith('http://') || urlPart.startsWith('https://')) {
+      // Exclude Git repository URLs (ending with .git)
+      if (urlPart.endsWith('.git')) {
+        return false;
+      }
+
+      // Exclude GitHub/GitLab web URLs (containing /tree/, /blob/, /raw/)
+      if (/\/(tree|blob|raw)\//.test(urlPart)) {
+        return false;
+      }
+
+      // Only classify as HTTP archive if URL has a recognized archive extension.
+      // Bare HTTPS URLs like https://github.com/user/repo are Git references,
+      // not archive downloads, and should fall through to GitResolver.
+      return /\.(tar\.gz|tgz|zip|tar)$/i.test(urlPart);
     }
 
-    return (
-      urlPart.startsWith('http://') ||
-      urlPart.startsWith('https://') ||
-      urlPart.startsWith('oss://') ||
-      urlPart.startsWith('s3://')
-    );
+    return false;
   }
 
   /**
