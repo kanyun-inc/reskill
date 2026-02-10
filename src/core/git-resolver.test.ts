@@ -68,6 +68,28 @@ describe('GitResolver', () => {
     it('should throw for invalid ref', () => {
       expect(() => resolver.parseRef('invalid')).toThrow('Invalid skill reference');
     });
+
+    describe('parseRef with #skillName fragment', () => {
+      it('should strip #fragment and set skillName', () => {
+        const result = resolver.parseRef('github:anthropics/skills#pdf');
+        expect(result.repo).toBe('skills');
+        expect(result.skillName).toBe('pdf');
+        expect(result.owner).toBe('anthropics');
+        expect(result.registry).toBe('github');
+      });
+
+      it('should strip #fragment with version', () => {
+        const result = resolver.parseRef('github:anthropics/skills@v1.0.0#pdf');
+        expect(result.repo).toBe('skills');
+        expect(result.skillName).toBe('pdf');
+        expect(result.version).toBe('v1.0.0');
+      });
+
+      it('should leave skillName undefined when no fragment', () => {
+        const result = resolver.parseRef('github:anthropics/skills');
+        expect(result.skillName).toBeUndefined();
+      });
+    });
   });
 
   describe('parseVersion', () => {

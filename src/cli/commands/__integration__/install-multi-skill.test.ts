@@ -4,6 +4,7 @@
  * Uses local file:// git repos only; no network.
  */
 
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -147,6 +148,27 @@ describe('CLI Integration: install --skill / --list (multi-skill repo)', () => {
       const result = runCli('install --help', tempDir);
       const output = getOutput(result);
       expect(output).toMatch(/--skill|skill/i);
+    });
+  });
+
+  describe('reinstall all (install with no args)', () => {
+    it('should reinstall multi-skill ref from skills.json', () => {
+      runCli(`install ${repoUrl} --skill pdf -a cursor -y`, tempDir);
+      const config = readSkillsJson(tempDir);
+      expect(config.skills?.pdf).toMatch(/#pdf$/);
+      fs.rmSync(path.join(tempDir, '.cursor', 'skills', 'pdf'), { recursive: true });
+      const result = runCli('install -a cursor -y', tempDir);
+      expect(result.exitCode).toBe(0);
+      expect(pathExists(path.join(tempDir, '.cursor', 'skills', 'pdf', 'SKILL.md'))).toBe(true);
+    });
+  });
+
+  describe('update with multi-skill ref', () => {
+    it('should update a skill installed from multi-skill repo', () => {
+      runCli(`install ${repoUrl} --skill pdf -a cursor -y`, tempDir);
+      const result = runCli('update pdf', tempDir);
+      expect(result.exitCode).toBe(0);
+      expect(getOutput(result)).not.toMatch(/Failed to clone/i);
     });
   });
 });

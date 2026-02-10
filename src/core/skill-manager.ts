@@ -1,6 +1,12 @@
 import * as path from 'node:path';
-import type { InstalledSkill, InstallOptions, SkillInfo } from '../types/index.js';
+import type {
+  InstalledSkill,
+  InstallOptions,
+  ParsedSkillRef,
+  SkillInfo,
+} from '../types/index.js';
 import {
+  copyDir,
   ensureDir,
   exists,
   getGlobalSkillsDir,
@@ -22,7 +28,7 @@ import { CacheManager } from './cache-manager.js';
 import { ConfigLoader } from './config-loader.js';
 import { GitResolver } from './git-resolver.js';
 import { HttpResolver } from './http-resolver.js';
-import { Installer, type InstallMode, type InstallResult } from './installer.js';
+import { DEFAULT_EXCLUDE_FILES, Installer, type InstallMode, type InstallResult } from './installer.js';
 import { LockManager } from './lock-manager.js';
 import { RegistryClient, RegistryError } from './registry-client.js';
 import { RegistryResolver } from './registry-resolver.js';
@@ -187,6 +193,25 @@ export class SkillManager {
   }
 
   /**
+   * Resolve the actual source path for installation.
+   * For multi-skill repos (parsed.skillName is set), discovers skills in the
+   * cached directory and returns the matching skill's subdirectory.
+   * For single-skill repos, returns basePath as-is.
+   */
+  private resolveSourcePath(basePath: string, parsed: ParsedSkillRef): string {
+    if (!parsed.skillName) return basePath;
+
+    const discovered = discoverSkillsInDir(basePath);
+    const match = discovered.find((s) => s.name === parsed.skillName);
+    if (!match) {
+      throw new Error(
+        `Skill "${parsed.skillName}" not found in repository. Available: ${discovered.map((s) => s.name).join(', ')}`,
+      );
+    }
+    return match.dirPath;
+  }
+
+  /**
    * Install skill
    */
   async install(ref: string, options: InstallOptions = {}): Promise<InstalledSkill> {
@@ -218,9 +243,10 @@ export class SkillManager {
       cacheResult = await this.cache.cache(repoUrl, parsed, gitRef, gitRef);
     }
 
-    // Get the real skill name from SKILL.md in cache
+    // Resolve source path (cache root or skill subdirectory for multi-skill repos)
     const cachePath = this.cache.getCachePath(parsed, gitRef);
-    const metadata = this.getSkillMetadataFromDir(cachePath);
+    const sourcePath = this.resolveSourcePath(cachePath, parsed);
+    const metadata = this.getSkillMetadataFromDir(sourcePath);
     const skillName = metadata?.name ?? fallbackName;
     const semanticVersion = metadata?.version ?? gitRef;
 
@@ -253,7 +279,7 @@ export class SkillManager {
       remove(skillPath);
     }
 
-    await this.cache.copyTo(parsed, gitRef, skillPath);
+    copyDir(sourcePath, skillPath, { exclude: DEFAULT_EXCLUDE_FILES });
 
     // Update lock file (project mode only)
     if (!this.isGlobal) {
@@ -906,8 +932,9 @@ export class SkillManager {
       cacheResult = await this.cache.cache(repoUrl, parsed, gitRef, gitRef);
     }
 
-    // Get cache path as source
-    const sourcePath = this.cache.getCachePath(parsed, gitRef);
+    // Resolve source path (cache root or skill subdirectory for multi-skill repos)
+    const cachePath = this.cache.getCachePath(parsed, gitRef);
+    const sourcePath = this.resolveSourcePath(cachePath, parsed);
 
     // Get the real skill name from SKILL.md in cache
     const metadata = this.getSkillMetadataFromDir(sourcePath);
