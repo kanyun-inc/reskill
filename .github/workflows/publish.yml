@@ -109,7 +109,7 @@ jobs:
 
       - name: Publish beta to npm
         if: steps.check-pre.outputs.is_pre == 'true'
-        run: pnpm changeset publish --tag beta
+        run: pnpm changeset publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
