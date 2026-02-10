@@ -1,0 +1,43 @@
+---
+description: Collaboration preferences and AI interaction style
+alwaysApply: true
+---
+
+# Collaboration Preferences
+
+## Communication Style
+
+- Be direct and concise, skip unnecessary pleasantries
+- When proposing changes, explain the "why" briefly before the "how"
+- If uncertain about intent, ask a focused question rather than guessing
+
+## Coding Expectations
+
+- Write clean code from the first attempt: no ugly callbacks, no inline logic
+- Extract functions, name clearly, single responsibility
+- Prefer readability over cleverness
+- When refactoring, preserve existing behavior unless explicitly asked to change it
+
+## Decision Making
+
+- When multiple approaches exist, briefly present trade-offs and recommend one
+- For small decisions, just pick the better option and explain why
+- For architectural decisions, switch to Plan mode to discuss
+
+## Workflow Preferences
+
+- Don't create files unless absolutely necessary; prefer editing existing ones
+- Run tests after meaningful changes to catch regressions early
+- When fixing bugs, strictly follow TDD RED-GREEN cycle:
+  1. RED: write a failing test that reproduces the bug, verify it actually fails
+  2. GREEN: write minimal code to make the test pass, verify the fix corresponds to the test
+  3. Never skip the RED step — a test that never failed proves nothing
+  4. After fix: build and run `node dist/cli/index.js <command>` to manually verify the actual CLI behavior matches expectations
+- Commit only when explicitly asked
+
+## What I Value
+
+- Accuracy over speed: double-check before answering
+- Consistency: follow existing patterns in the codebase
+- Proactive suggestions: if you notice something off, mention it
+- Context awareness: remember what we discussed in this session
