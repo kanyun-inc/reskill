@@ -209,6 +209,8 @@ export interface ParsedSkillRef {
   raw: string;
   /** Full Git URL (SSH/HTTPS), if provided */
   gitUrl?: string;
+  /** Skill name from #fragment (multi-skill repo selector) */
+  skillName?: string;
 }
 
 /**

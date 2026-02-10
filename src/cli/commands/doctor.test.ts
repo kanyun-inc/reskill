@@ -1134,22 +1134,26 @@ describe('runDoctorChecks', () => {
     expect(checkNames).toContain('Installed skills');
   });
 
-  it('should run all checks including network', async () => {
-    const results = await runDoctorChecks({
-      cwd: testDir,
-      packageName: 'reskill',
-      packageVersion: '0.17.0',
-      skipNetwork: false,
-      skipConfigChecks: true,
-    });
+  it(
+    'should run all checks including network',
+    async () => {
+      const results = await runDoctorChecks({
+        cwd: testDir,
+        packageName: 'reskill',
+        packageVersion: '0.17.0',
+        skipNetwork: false,
+        skipConfigChecks: true,
+      });
 
-    // Should have 10 checks with network
-    expect(results.length).toBe(10);
+      // Should have 10 checks with network
+      expect(results.length).toBe(10);
 
-    const checkNames = results.map((r) => r.name);
-    expect(checkNames.some((n) => n.includes('github.com'))).toBe(true);
-    expect(checkNames.some((n) => n.includes('gitlab.com'))).toBe(true);
-  });
+      const checkNames = results.map((r) => r.name);
+      expect(checkNames.some((n) => n.includes('github.com'))).toBe(true);
+      expect(checkNames.some((n) => n.includes('gitlab.com'))).toBe(true);
+    },
+    30_000,
+  );
 
   it('should include config checks when not skipped', async () => {
     // Create a skills.json with issues

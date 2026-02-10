@@ -96,11 +96,20 @@ export class GitResolver {
   parseRef(ref: string): ParsedSkillRef {
     const raw = ref;
 
+    // Extract #skillName fragment before any parsing (for both Git URLs and shorthand)
+    let skillName: string | undefined;
+    const hashIndex = ref.indexOf('#');
+    if (hashIndex >= 0) {
+      skillName = ref.slice(hashIndex + 1);
+      ref = ref.slice(0, hashIndex);
+    }
+
     // First check if it's a Git URL (SSH, HTTPS, git://)
     // For Git URLs, need special handling for version separator
     // Format: git@host:user/repo.git[@version] or git@host:user/repo.git/subpath[@version]
     if (isGitUrl(ref)) {
-      return this.parseGitUrlRef(ref);
+      const parsed = this.parseGitUrlRef(ref);
+      return { ...parsed, raw, skillName };
     }
 
     // Standard format parsing for non-Git URLs
@@ -154,6 +163,7 @@ export class GitResolver {
       subPath,
       version,
       raw,
+      skillName,
     };
   }
 
