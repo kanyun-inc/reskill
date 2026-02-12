@@ -1,7 +1,7 @@
 ---
 name: find-skills
 description: Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. Uses reskill as the package manager.
-version: 0.1.0
+version: 0.2.0
 author: reskill
 tags:
   - discovery
@@ -13,6 +13,10 @@ tags:
 # Find Skills (reskill)
 
 This skill helps you discover and install skills from the reskill ecosystem.
+
+> **Key Principles:**
+> 1. **Search → Present → Ask → Install** — always show results first, ask the user before installing.
+> 2. **Be registry-aware** — check if the project has a configured registry (private or public) and tell the user which registry you're searching. If results are empty, suggest the user may need to configure a private registry.
 
 ## When to Use This Skill
 
@@ -71,6 +75,31 @@ Once configured, all `find` / `install` commands will use it automatically — n
 - `reskill info <skill>` — Show skill details
 
 ## How to Help Users Find Skills
+
+### Step 0: Check Registry Context
+
+Before searching, determine which registry to use (see "Registry configuration" above for the full priority order).
+
+**Check these sources:**
+1. `RESKILL_REGISTRY` environment variable
+2. `defaults.publishRegistry` in `skills.json`
+
+**If either is configured** → use it, and tell the user which registry you're searching.
+
+**If neither is configured** → ask the user before proceeding:
+
+```
+No private registry is configured for this project.
+
+Do you want to search a private registry? If so, provide the URL
+(e.g. --registry https://your-registry.example.com/).
+
+Otherwise, I'll search the public registry (reskill.info).
+```
+
+Once the user responds:
+- User provides a URL → use it with `--registry <url>`
+- User says no / skip → proceed with the public registry (`https://reskill.info/`)
 
 ### Step 1: Understand What They Need
 
@@ -167,18 +196,21 @@ When broader searches return multiple results, **read each item's `description` 
 
 Stop as soon as you get relevant results — no need to run all rounds.
 
-### Step 3: Present Options to the User
+### Step 3: Present Results and Ask Before Installing
 
 When you find relevant skills, present them clearly:
 
 1. The skill name and description
 2. The version and author
-3. The install command
+3. Which registry the result came from (public or private)
+4. The install command
+
+Then ask the user which one(s) they want to install.
 
 Example response:
 
 ```
-I found a skill that might help!
+I found a skill that might help! (from public registry: reskill.info)
 
 **@scope/react-best-practices** (v1.2.0)
 React and performance optimization guidelines.
@@ -186,14 +218,12 @@ React and performance optimization guidelines.
 To install:
   npx reskill@latest install @scope/react-best-practices -y
 
-Would you like me to install it for you?
+Would you like me to install it?
 ```
 
-If multiple results are found, present the top 2-3 most relevant ones and let the user choose.
+If multiple results are found, present the top 2-3 most relevant ones and let the user choose. Once the user confirms (e.g., "install it", "yes", "install 1 and 3"), proceed to install all confirmed skills — no need to ask again for each one.
 
 ### Step 4: Install the Skill
-
-If the user wants to proceed, install it:
 
 ```bash
 # Install to the current project
@@ -203,7 +233,7 @@ npx reskill@latest install <name> -y
 npx reskill@latest install <name> -y -g
 ```
 
-The `-y` flag skips confirmation prompts.
+The `-y` flag skips CLI confirmation prompts.
 
 After installation, let the user know the skill is ready and briefly describe what new capabilities it provides.
 
