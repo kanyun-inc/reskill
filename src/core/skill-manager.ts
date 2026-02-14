@@ -42,7 +42,7 @@ import {
  * SkillManager configuration options
  */
 export interface SkillManagerOptions {
-  /** Global mode, install to ~/.claude/skills */
+  /** Global mode, install to ~/.agents/skills/ */
   global?: boolean;
 }
 
@@ -53,8 +53,8 @@ export interface SkillManagerOptions {
  * Provides complete skill installation, update, and uninstall functionality
  *
  * Installation directories:
- * - Project mode (default): .skills/ or directory configured in skills.json
- * - Global mode (-g): ~/.claude/skills/
+ * - Project mode (default): .agents/skills/ (canonical) or .skills/ (legacy)
+ * - Global mode (-g): ~/.agents/skills/
  */
 export class SkillManager {
   private projectRoot: string;
