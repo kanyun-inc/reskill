@@ -1533,7 +1533,9 @@ export class SkillManager {
 
     const urlParsed = parseGitUrl(sourceUrl);
     if (urlParsed) {
-      return `${sourceType}:${urlParsed.owner}/${urlParsed.repo}/${skillPath}`;
+      const isSelfHosted = !this.isStandardHost(urlParsed.host, sourceType);
+      const prefix = isSelfHosted ? urlParsed.host : sourceType;
+      return `${prefix}:${urlParsed.owner}/${urlParsed.repo}/${skillPath}`;
     }
 
     const shortName = getShortName(parsed.fullName);
@@ -1542,6 +1544,18 @@ export class SkillManager {
     }
 
     return sourceUrl;
+  }
+
+  /**
+   * Check if a host matches the standard host for a given source type.
+   * Standard hosts: github.com for github, gitlab.com for gitlab.
+   */
+  private isStandardHost(host: string, sourceType: string): boolean {
+    const standardHosts: Record<string, string> = {
+      github: 'github.com',
+      gitlab: 'gitlab.com',
+    };
+    return standardHosts[sourceType] === host;
   }
 
   /**
