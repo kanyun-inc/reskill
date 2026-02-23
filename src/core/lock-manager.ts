@@ -121,6 +121,7 @@ export class LockManager {
       ref: string;
       resolved: string;
       commit: string;
+      registry?: string;
     },
   ): LockedSkill {
     const lockedSkill: LockedSkill = {
@@ -131,6 +132,11 @@ export class LockManager {
       commit: options.commit,
       installedAt: new Date().toISOString(),
     };
+
+    // Only persist registry URL for registry-sourced skills
+    if (options.registry) {
+      lockedSkill.registry = options.registry;
+    }
 
     this.set(name, lockedSkill);
     return lockedSkill;

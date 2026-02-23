@@ -1,5 +1,11 @@
 import * as path from 'node:path';
-import type { InstalledSkill, InstallOptions, ParsedSkillRef, SkillInfo } from '../types/index.js';
+import type {
+  InstalledSkill,
+  InstallOptions,
+  ParsedSkillRef,
+  RegistryInstallContext,
+  SkillInfo,
+} from '../types/index.js';
 import {
   copyDir,
   ensureDir,
@@ -12,7 +18,12 @@ import {
 } from '../utils/fs.js';
 import { parseGitUrl } from '../utils/git.js';
 import { logger } from '../utils/logger.js';
-import { getRegistryUrl, getShortName, parseSkillIdentifier } from '../utils/registry-scope.js';
+import {
+  getRegistryUrl,
+  getScopeForRegistry,
+  getShortName,
+  parseSkillIdentifier,
+} from '../utils/registry-scope.js';
 import {
   type AgentType,
   agents,
@@ -20,7 +31,7 @@ import {
   isValidAgentType,
 } from './agent-registry.js';
 import { CacheManager } from './cache-manager.js';
-import { ConfigLoader } from './config-loader.js';
+import { ConfigLoader, DEFAULT_REGISTRIES } from './config-loader.js';
 import { GitResolver } from './git-resolver.js';
 import { HttpResolver } from './http-resolver.js';
 import {
@@ -410,10 +421,16 @@ export class SkillManager {
   async installAll(options: InstallOptions = {}): Promise<InstalledSkill[]> {
     const skills = this.config.getSkills();
     const installed: InstalledSkill[] = [];
+    const targetAgents = await detectInstalledAgents();
 
     for (const [name, ref] of Object.entries(skills)) {
       try {
-        const skill = await this.install(ref, { ...options, save: false });
+        // Use installToAgents (not install) to correctly route registry refs
+        // resolveRegistryUrl inside handles lock file / registries probe fallback
+        const { skill } = await this.installToAgents(ref, targetAgents, {
+          ...options,
+          save: false,
+        });
         installed.push(skill);
       } catch (error) {
         logger.error(`Failed to install ${name}: ${(error as Error).message}`);
@@ -477,6 +494,7 @@ export class SkillManager {
    */
   async update(name?: string): Promise<InstalledSkill[]> {
     const updated: InstalledSkill[] = [];
+    const targetAgents = await detectInstalledAgents();
 
     if (name) {
       // Update single skill
@@ -486,8 +504,13 @@ export class SkillManager {
         return [];
       }
 
-      // Check if update is needed (skip check for HTTP sources - always re-download)
-      if (!this.isHttpSource(ref)) {
+      // Check if update is needed (skip for HTTP and Registry - always re-download/reinstall)
+      const isRegistry = this.isRegistrySource(ref);
+      if (isRegistry) {
+        logger.info(`${name} is from registry, re-installing...`);
+      } else if (this.isHttpSource(ref)) {
+        logger.info(`${name} is from HTTP source, re-downloading...`);
+      } else {
         const resolved = await this.resolver.resolve(ref);
         const remoteCommit = await this.cache.getRemoteCommit(resolved.repoUrl, resolved.ref);
 
@@ -495,20 +518,24 @@ export class SkillManager {
           logger.info(`${name} is already up to date`);
           return [];
         }
-      } else {
-        // For HTTP sources, log that we're re-downloading
-        logger.info(`${name} is from HTTP source, re-downloading...`);
       }
 
-      const skill = await this.install(ref, { force: true, save: false });
+      const skill = await this.installForUpdate(ref, targetAgents, {
+        force: true,
+        save: false,
+      });
       updated.push(skill);
     } else {
       // Update all
       const skills = this.config.getSkills();
       for (const [skillName, ref] of Object.entries(skills)) {
         try {
-          // Check if update is needed (skip check for HTTP sources)
-          if (!this.isHttpSource(ref)) {
+          // Check if update is needed (skip for HTTP and Registry)
+          if (this.isRegistrySource(ref)) {
+            logger.info(`${skillName} is from registry, re-installing...`);
+          } else if (this.isHttpSource(ref)) {
+            logger.info(`${skillName} is from HTTP source, re-downloading...`);
+          } else {
             const resolved = await this.resolver.resolve(ref);
             const remoteCommit = await this.cache.getRemoteCommit(resolved.repoUrl, resolved.ref);
 
@@ -516,11 +543,12 @@ export class SkillManager {
               logger.info(`${skillName} is already up to date`);
               continue;
             }
-          } else {
-            logger.info(`${skillName} is from HTTP source, re-downloading...`);
           }
 
-          const skill = await this.install(ref, { force: true, save: false });
+          const skill = await this.installForUpdate(ref, targetAgents, {
+            force: true,
+            save: false,
+          });
           updated.push(skill);
         } catch (error) {
           logger.error(`Failed to update ${skillName}: ${(error as Error).message}`);
@@ -529,6 +557,87 @@ export class SkillManager {
     }
 
     return updated;
+  }
+
+  /**
+   * Resolve registry URL for a skill reference.
+   *
+   * Resolution order:
+   * 1. Explicit CLI override (options.registry)
+   * 2. Scoped skills → getRegistryUrl(scope)
+   * 3. Unscoped skills → lock file registry (O(1), no network)
+   * 4. Unscoped skills → probe skills.json registries (non-git-host, network)
+   * 5. Default → PUBLIC_REGISTRY
+   */
+  private async resolveRegistryUrl(ref: string, explicitRegistry?: string): Promise<string> {
+    if (explicitRegistry) return explicitRegistry;
+
+    const parsed = parseSkillIdentifier(ref);
+    if (parsed.scope) return getRegistryUrl(parsed.scope);
+
+    // Fast path: lock file has registry URL
+    const locked = this.lockManager.get(parsed.name);
+    if (locked?.registry) return locked.registry;
+
+    // Slow path: probe configured registries (skip git hosts)
+    const registries = this.config.getRegistries();
+    for (const [name, url] of Object.entries(registries)) {
+      if (this.isGitHostRegistry(name, url)) continue;
+      try {
+        const client = new RegistryClient({ registry: url });
+        await client.getSkillInfo(parsed.fullName);
+        return url; // Found it
+      } catch {}
+    }
+
+    return getRegistryUrl(null); // PUBLIC_REGISTRY
+  }
+
+  /**
+   * Check if a registry entry is a git host (github, gitlab, etc.)
+   * Git hosts are not skill registries and should be skipped during probe.
+   */
+  private isGitHostRegistry(name: string, url: string): boolean {
+    const gitHostNames = new Set(Object.keys(DEFAULT_REGISTRIES));
+    if (gitHostNames.has(name)) return true;
+
+    const gitHostPatterns = ['github.com', 'gitlab.com'];
+    const normalizedUrl = url.toLowerCase();
+    return gitHostPatterns.some((pattern) => normalizedUrl.includes(pattern));
+  }
+
+  /**
+   * Derive a registry name from a URL for storing in skills.json.registries.
+   * Returns null for git hosts (already in DEFAULT_REGISTRIES).
+   */
+  private deriveRegistryName(registryUrl: string): string | null {
+    // Skip git hosts
+    if (this.isGitHostRegistry('', registryUrl)) return null;
+
+    // Try known scope mapping first (e.g., kanyun registries)
+    const scope = getScopeForRegistry(registryUrl);
+    if (scope) return scope;
+
+    // Use hostname as registry name
+    try {
+      const url = new URL(registryUrl);
+      return url.hostname;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Install skill for update flow. Uses installToAgents so registry refs are
+   * routed correctly (Registry > HTTP > Git).
+   */
+  private async installForUpdate(
+    ref: string,
+    targetAgents: AgentType[],
+    options: InstallOptions,
+  ): Promise<InstalledSkill> {
+    const { skill } = await this.installToAgents(ref, targetAgents, options);
+    return skill;
   }
 
   /**
@@ -944,7 +1053,7 @@ export class SkillManager {
     skill: InstalledSkill;
     results: Map<AgentType, InstallResult>;
   }> {
-    const { save = true, mode = 'symlink' } = options;
+    const { save = true, mode = 'symlink', registryContext } = options;
 
     // Parse reference
     const resolved = await this.resolver.resolve(ref);
@@ -967,7 +1076,8 @@ export class SkillManager {
 
     // Get the real skill name from SKILL.md in cache
     const metadata = this.getSkillMetadataFromDir(sourcePath);
-    const skillName = metadata?.name ?? fallbackName;
+    // Priority: registryContext name > SKILL.md name > fallback from Git URL
+    const skillName = registryContext?.skillName ?? metadata?.name ?? fallbackName;
     const semanticVersion = metadata?.version ?? gitRef;
 
     logger.package(`Installing ${skillName}@${gitRef} to ${targetAgents.length} agent(s)...`);
@@ -987,21 +1097,24 @@ export class SkillManager {
 
     // Update lock file (project mode only)
     if (!this.isGlobal) {
+      const lockSource =
+        registryContext?.lockSource ??
+        `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? `/${parsed.subPath}` : ''}`;
       this.lockManager.lockSkill(skillName, {
-        source: `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? `/${parsed.subPath}` : ''}`,
+        source: lockSource,
         version: semanticVersion,
         ref: gitRef,
         resolved: repoUrl,
         commit: cacheResult.commit,
+        registry: registryContext?.registryUrl,
       });
     }
 
     // Update skills.json (project mode only)
     if (!this.isGlobal && save) {
       this.config.ensureExists();
-      // Normalize the reference to use registry shorthand if possible
-      const normalizedRef = this.config.normalizeSkillRef(ref);
-      this.config.addSkill(skillName, normalizedRef);
+      const configRef = registryContext?.configRef ?? this.config.normalizeSkillRef(ref);
+      this.config.addSkill(skillName, configRef);
     }
 
     // Count results
@@ -1039,7 +1152,7 @@ export class SkillManager {
     skill: InstalledSkill;
     results: Map<AgentType, InstallResult>;
   }> {
-    const { save = true, mode = 'symlink' } = options;
+    const { save = true, mode = 'symlink', registryContext } = options;
 
     // Parse HTTP reference
     const resolved = await this.httpResolver.resolve(ref);
@@ -1061,7 +1174,8 @@ export class SkillManager {
 
     // Get the real skill name from SKILL.md in cache
     const metadata = this.getSkillMetadataFromDir(sourcePath);
-    const skillName = metadata?.name ?? fallbackName;
+    // Priority: registryContext name > SKILL.md name > fallback from URL
+    const skillName = registryContext?.skillName ?? metadata?.name ?? fallbackName;
     const semanticVersion = metadata?.version ?? version;
 
     logger.package(
@@ -1083,19 +1197,22 @@ export class SkillManager {
 
     // Update lock file (project mode only)
     if (!this.isGlobal) {
+      const lockSource = registryContext?.lockSource ?? `http:${httpInfo.host}/${skillName}`;
       this.lockManager.lockSkill(skillName, {
-        source: `http:${httpInfo.host}/${skillName}`,
+        source: lockSource,
         version: semanticVersion,
         ref: version,
         resolved: repoUrl,
         commit: cacheResult.commit,
+        registry: registryContext?.registryUrl,
       });
     }
 
     // Update skills.json (project mode only)
     if (!this.isGlobal && save) {
       this.config.ensureExists();
-      this.config.addSkill(skillName, ref);
+      const configRef = registryContext?.configRef ?? ref;
+      this.config.addSkill(skillName, configRef);
     }
 
     // Count results
@@ -1143,7 +1260,7 @@ export class SkillManager {
 
     // Parse skill identifier and resolve registry URL once (single source of truth)
     const parsed = parseSkillIdentifier(ref);
-    const registryUrl = options.registry || getRegistryUrl(parsed.scope);
+    const registryUrl = await this.resolveRegistryUrl(ref, options.registry);
     const client = new RegistryClient({ registry: registryUrl });
 
     // Query skill info to determine source_type
@@ -1253,6 +1370,7 @@ export class SkillManager {
           ref: version,
           resolved: resolvedRegistryUrl,
           commit: resolved.integrity, // Use integrity as commit-like identifier
+          registry: resolvedRegistryUrl,
         });
       }
 
@@ -1261,6 +1379,15 @@ export class SkillManager {
         this.config.ensureExists();
         // Save with full name for registry skills
         this.config.addSkill(shortName, ref);
+
+        // Save custom registry to skills.json.registries (for reinstall without lock file)
+        if (options.registry) {
+          const registryName = this.deriveRegistryName(options.registry);
+          if (registryName) {
+            this.config.addRegistry(registryName, options.registry);
+            this.config.save();
+          }
+        }
       }
 
       // 9. Count results and log
@@ -1329,6 +1456,29 @@ export class SkillManager {
 
     logger.package(`Installing ${parsed.fullName} from ${source_type} source...`);
 
+    // Build registry context so downstream methods use the registry name
+    // instead of deriving from the source URL (e.g., Git repo name)
+    const shortName = getShortName(parsed.fullName);
+    const registryUrl = await this.resolveRegistryUrl(parsed.fullName, options.registry);
+    const registryContext: RegistryInstallContext = {
+      skillName: shortName,
+      configRef: parsed.fullName,
+      lockSource: `registry:${parsed.fullName}`,
+      registryUrl,
+    };
+    const optionsWithContext = { ...options, registryContext };
+
+    // Save custom registry to skills.json.registries (for reinstall without lock file)
+    if (!this.isGlobal && options.registry) {
+      const registryName = this.deriveRegistryName(options.registry);
+      if (registryName) {
+        this.config.ensureExists();
+        this.config.load();
+        this.config.addRegistry(registryName, options.registry);
+        this.config.save();
+      }
+    }
+
     switch (source_type) {
       case 'github':
       case 'gitlab': {
@@ -1338,13 +1488,13 @@ export class SkillManager {
           skillInfo.skill_path,
           parsed,
         );
-        return this.installToAgentsFromGit(gitRef, targetAgents, options);
+        return this.installToAgentsFromGit(gitRef, targetAgents, optionsWithContext);
       }
 
       case 'oss_url':
       case 'custom_url':
         // Direct download URL
-        return this.installToAgentsFromHttp(source_url, targetAgents, options);
+        return this.installToAgentsFromHttp(source_url, targetAgents, optionsWithContext);
 
       case 'local':
         // Download tarball via Registry API
@@ -1409,7 +1559,7 @@ export class SkillManager {
     results: Map<AgentType, InstallResult>;
   }> {
     const { save = true, mode = 'symlink' } = options;
-    const registryUrl = options.registry || getRegistryUrl(parsed.scope);
+    const registryUrl = await this.resolveRegistryUrl(parsed.fullName, options.registry);
     const shortName = getShortName(parsed.fullName);
     const version = 'latest';
 
@@ -1454,6 +1604,7 @@ export class SkillManager {
           ref: version,
           resolved: registryUrl,
           commit: '', // Local-published skills have no commit hash
+          registry: registryUrl,
         });
       }
 
@@ -1461,6 +1612,15 @@ export class SkillManager {
       if (!this.isGlobal && save) {
         this.config.ensureExists();
         this.config.addSkill(skillName, parsed.fullName);
+
+        // Save custom registry to skills.json.registries (for reinstall without lock file)
+        if (options.registry) {
+          const registryName = this.deriveRegistryName(options.registry);
+          if (registryName) {
+            this.config.addRegistry(registryName, options.registry);
+            this.config.save();
+          }
+        }
       }
 
       return {

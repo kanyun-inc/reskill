@@ -13,7 +13,6 @@ import {
   createMockSkill,
   createTempDir,
   getOutput,
-  pathExists,
   removeTempDir,
   runCli,
   setupSkillsJson,
@@ -106,6 +105,21 @@ describe('CLI Integration: update', () => {
       const output = getOutput(result);
       // CLI may show "no skills to update" or "not found" depending on implementation
       expect(output.toLowerCase()).toMatch(/not found|no skills|error|failed/i);
+    });
+  });
+
+  describe('registry source', () => {
+    it('should not treat registry ref as Git URL', () => {
+      runCli('init -y', tempDir);
+      setupSkillsJson(tempDir, {
+        'shadcn-ui': '@kanyun-test/shadcn-ui',
+      });
+
+      const result = runCli('update shadcn-ui', tempDir);
+      const output = getOutput(result);
+
+      // Must not misinterpret registry ref as GitHub URL (bug: github.com/@scope/name)
+      expect(output).not.toContain('github.com/@');
     });
   });
 });

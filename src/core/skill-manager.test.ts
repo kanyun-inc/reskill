@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GitResolver } from './git-resolver.js';
 import { HttpResolver } from './http-resolver.js';
 import { RegistryResolver } from './registry-resolver.js';
 import { SkillManager } from './skill-manager.js';
@@ -832,6 +833,93 @@ describe('SkillManager update() should check remote before reinstalling', () => 
     // Assert: Should need update when no commit in lock
     expect(needsUpdate).toBe(true);
   });
+
+  it('should handle registry source skills without calling GitResolver', async () => {
+    // Setup: skills.json with registry ref (@scope/name)
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({
+        skills: { 'shadcn-ui': '@kanyun-test/shadcn-ui' },
+      }),
+    );
+
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: '@kanyun-test/shadcn-ui',
+      source_type: 'registry',
+    });
+
+    const registryResolver = (skillManager as unknown as { registryResolver: RegistryResolver })
+      .registryResolver;
+    vi.spyOn(registryResolver, 'resolve').mockResolvedValue({
+      parsed: {
+        scope: '@kanyun-test',
+        name: 'shadcn-ui',
+        version: '1.0.0',
+        fullName: '@kanyun-test/shadcn-ui',
+      },
+      shortName: 'shadcn-ui',
+      version: '1.0.0',
+      registryUrl: 'https://registry.example.com/',
+      tarball: Buffer.from('mock tarball'),
+      integrity: 'sha256-mockhash',
+    });
+
+    const mockSkillDir = path.join(tempDir, 'mock-shadcn-ui');
+    fs.mkdirSync(mockSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), '# shadcn-ui');
+    vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
+
+    const resolveSpy = vi.spyOn(GitResolver.prototype, 'resolve');
+
+    const updated = await skillManager.update('shadcn-ui');
+
+    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(updated).toHaveLength(1);
+    expect(updated[0].name).toBe('shadcn-ui');
+  });
+
+  it('should re-install registry source skills during update', async () => {
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({
+        skills: { 'my-registry-skill': '@kanyun-test/my-registry-skill' },
+      }),
+    );
+
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: '@kanyun-test/my-registry-skill',
+      source_type: 'registry',
+    });
+
+    const registryResolver = (skillManager as unknown as { registryResolver: RegistryResolver })
+      .registryResolver;
+    vi.spyOn(registryResolver, 'resolve').mockResolvedValue({
+      parsed: {
+        scope: '@kanyun-test',
+        name: 'my-registry-skill',
+        version: '2.0.0',
+        fullName: '@kanyun-test/my-registry-skill',
+      },
+      shortName: 'my-registry-skill',
+      version: '2.0.0',
+      registryUrl: 'https://registry.example.com/',
+      tarball: Buffer.from('mock tarball'),
+      integrity: 'sha256-mockhash',
+    });
+
+    const mockSkillDir = path.join(tempDir, 'mock-registry-skill');
+    fs.mkdirSync(mockSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), '# my-registry-skill');
+    vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
+
+    const updated = await skillManager.update('my-registry-skill');
+
+    expect(updated).toHaveLength(1);
+    expect(updated[0].name).toBe('my-registry-skill');
+    expect(updated[0].version).toBe('2.0.0');
+  });
 });
 
 describe('SkillManager with custom registries', () => {
@@ -1084,6 +1172,84 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
         'https://github.com/user/repo/tree/main/skills/my-skill',
         ['cursor'],
         expect.any(Object),
+      );
+    });
+
+    it('should pass registryContext with registry name for github source_type', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/vercel-react-best-practices',
+        source_type: 'github',
+        source_url:
+          'https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices',
+      });
+
+      const installFromGitSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installToAgentsFromGit',
+        )
+        .mockResolvedValue({
+          skill: {
+            name: 'vercel-react-best-practices',
+            path: '/tmp/skill',
+            version: '1.0.0',
+            source: 'registry:@kanyun/vercel-react-best-practices',
+          },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      await manager.installToAgents('@kanyun/vercel-react-best-practices', ['cursor']);
+
+      // registryContext should carry the registry name, not the Git repo name
+      expect(installFromGitSpy).toHaveBeenCalledWith(
+        'https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices',
+        ['cursor'],
+        expect.objectContaining({
+          registryContext: expect.objectContaining({
+            skillName: 'vercel-react-best-practices',
+            configRef: '@kanyun/vercel-react-best-practices',
+            lockSource: 'registry:@kanyun/vercel-react-best-practices',
+          }),
+        }),
+      );
+    });
+
+    it('should pass registryContext with registry name for oss_url source_type', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/oss-skill',
+        source_type: 'oss_url',
+        source_url: 'https://bucket.oss.com/skill.tgz',
+      });
+
+      const installFromHttpSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installToAgentsFromHttp',
+        )
+        .mockResolvedValue({
+          skill: {
+            name: 'oss-skill',
+            path: '/tmp/skill',
+            version: '1.0.0',
+            source: 'registry:@kanyun/oss-skill',
+          },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      await manager.installToAgents('@kanyun/oss-skill', ['cursor']);
+
+      expect(installFromHttpSpy).toHaveBeenCalledWith(
+        'https://bucket.oss.com/skill.tgz',
+        ['cursor'],
+        expect.objectContaining({
+          registryContext: expect.objectContaining({
+            skillName: 'oss-skill',
+            configRef: '@kanyun/oss-skill',
+            lockSource: 'registry:@kanyun/oss-skill',
+          }),
+        }),
       );
     });
 
@@ -1582,6 +1748,425 @@ version: 1.0.0
       expect(skills[0].name).toBe('minimal-skill');
       expect(skills[0].version).toBe('1.0.0');
     });
+  });
+});
+
+describe('SkillManager registry fallback from lock file', () => {
+  let tempDir: string;
+  let skillManager: SkillManager;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-lock-fallback-test-'));
+    skillManager = new SkillManager(tempDir);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should use lock registry when reinstalling unscoped registry skills', async () => {
+    // Setup: skills.json with unscoped bare name
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({
+        skills: { 'find-skills': 'find-skills' },
+      }),
+    );
+
+    // Setup: skills.lock with registry URL from previous install
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.lock'),
+      JSON.stringify({
+        lockfileVersion: 1,
+        skills: {
+          'find-skills': {
+            source: 'registry:find-skills',
+            version: 'main',
+            ref: 'main',
+            resolved: 'https://github.com/vercel-labs/skills',
+            commit: 'abc123',
+            installedAt: new Date().toISOString(),
+            registry: 'https://private-registry.example.com/',
+          },
+        },
+      }),
+    );
+
+    // Mock the registry client to verify correct registry URL is used
+    const { RegistryClient } = await import('./registry-client.js');
+    const getSkillInfoSpy = vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: 'find-skills',
+      source_type: 'github',
+      source_url: 'https://github.com/vercel-labs/skills',
+    });
+
+    // Mock the full Git install chain (must return nested { parsed, repoUrl, ref })
+    vi.spyOn(GitResolver.prototype, 'resolve').mockResolvedValue({
+      parsed: {
+        registry: 'github',
+        owner: 'vercel-labs',
+        repo: 'skills',
+        raw: 'https://github.com/vercel-labs/skills',
+      },
+      repoUrl: 'https://github.com/vercel-labs/skills',
+      ref: 'main',
+    });
+
+    const { CacheManager } = await import('./cache-manager.js');
+    const mockSkillDir = path.join(tempDir, 'mock-find-skills');
+    fs.mkdirSync(mockSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), '# find-skills');
+    vi.spyOn(CacheManager.prototype, 'cache').mockResolvedValue({
+      path: mockSkillDir,
+      commit: 'abc123',
+    });
+
+    // Should NOT throw - the lock file registry fallback should route to private registry
+    await skillManager.installAll();
+
+    // Verify RegistryClient was called (proving it reached the registry path)
+    expect(getSkillInfoSpy).toHaveBeenCalled();
+  });
+
+  it('should use lock registry when updating unscoped registry skills', async () => {
+    // Setup: skills.json with unscoped bare name
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({
+        skills: { 'find-skills': 'find-skills' },
+      }),
+    );
+
+    // Setup: skills.lock with registry URL from previous install
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.lock'),
+      JSON.stringify({
+        lockfileVersion: 1,
+        skills: {
+          'find-skills': {
+            source: 'registry:find-skills',
+            version: 'main',
+            ref: 'main',
+            resolved: 'https://github.com/vercel-labs/skills',
+            commit: 'abc123',
+            installedAt: new Date().toISOString(),
+            registry: 'https://private-registry.example.com/',
+          },
+        },
+      }),
+    );
+
+    const { RegistryClient } = await import('./registry-client.js');
+    const getSkillInfoSpy = vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: 'find-skills',
+      source_type: 'github',
+      source_url: 'https://github.com/vercel-labs/skills',
+    });
+
+    // Mock Git resolve (nested structure)
+    vi.spyOn(GitResolver.prototype, 'resolve').mockResolvedValue({
+      parsed: {
+        registry: 'github',
+        owner: 'vercel-labs',
+        repo: 'skills',
+        raw: 'https://github.com/vercel-labs/skills',
+      },
+      repoUrl: 'https://github.com/vercel-labs/skills',
+      ref: 'main',
+    });
+
+    const { CacheManager } = await import('./cache-manager.js');
+    const mockSkillDir = path.join(tempDir, 'mock-find-skills');
+    fs.mkdirSync(mockSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), '# find-skills');
+    vi.spyOn(CacheManager.prototype, 'cache').mockResolvedValue({
+      path: mockSkillDir,
+      commit: 'def456',
+    });
+
+    // Should NOT throw "fetch failed"
+    const updated = await skillManager.update('find-skills');
+
+    expect(updated).toHaveLength(1);
+    expect(updated[0].name).toBe('find-skills');
+    expect(getSkillInfoSpy).toHaveBeenCalled();
+  });
+
+  it('should not inject registry for non-registry refs', async () => {
+    // Setup: skills.json with a Git-style ref
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({
+        skills: { reskill: 'github:kanyun-inc/reskill' },
+      }),
+    );
+
+    // Lock file without registry field (Git sources don't have it)
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.lock'),
+      JSON.stringify({
+        lockfileVersion: 1,
+        skills: {
+          reskill: {
+            source: 'github:kanyun-inc/reskill',
+            version: 'main',
+            ref: 'main',
+            resolved: 'https://github.com/kanyun-inc/reskill',
+            commit: 'abc123',
+            installedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    );
+
+    // Mock Git resolve (nested structure)
+    vi.spyOn(GitResolver.prototype, 'resolve').mockResolvedValue({
+      parsed: {
+        registry: 'github',
+        owner: 'kanyun-inc',
+        repo: 'reskill',
+        raw: 'github:kanyun-inc/reskill',
+      },
+      repoUrl: 'https://github.com/kanyun-inc/reskill',
+      ref: 'main',
+    });
+
+    const { CacheManager } = await import('./cache-manager.js');
+    const mockSkillDir = path.join(tempDir, 'mock-reskill');
+    fs.mkdirSync(mockSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), '# reskill');
+    vi.spyOn(CacheManager.prototype, 'cache').mockResolvedValue({
+      path: mockSkillDir,
+      commit: 'abc123',
+    });
+
+    // Should work normally without registry injection
+    const installed = await skillManager.installAll();
+    expect(installed).toHaveLength(1);
+    expect(installed[0].name).toBe('reskill');
+  });
+});
+
+// ============================================================================
+// resolveRegistryUrl tests
+// ============================================================================
+
+describe('SkillManager resolveRegistryUrl', () => {
+  let tempDir: string;
+  let skillManager: SkillManager;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-resolve-registry-'));
+    skillManager = new SkillManager(tempDir);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  // Access the private method via casting
+  const callResolveRegistryUrl = (
+    manager: SkillManager,
+    ref: string,
+    explicitRegistry?: string,
+  ): Promise<string> => {
+    return (
+      manager as unknown as Record<string, (...args: unknown[]) => Promise<string>>
+    ).resolveRegistryUrl(ref, explicitRegistry);
+  };
+
+  it('should use explicit CLI override first', async () => {
+    const url = await callResolveRegistryUrl(
+      skillManager,
+      'find-skills',
+      'https://custom.example.com/',
+    );
+    expect(url).toBe('https://custom.example.com/');
+  });
+
+  it('should use scope mapping for scoped skills', async () => {
+    // @kanyun scope maps to a known registry
+    const url = await callResolveRegistryUrl(skillManager, '@kanyun/my-skill');
+    expect(url).toContain('zhenguanyu.com');
+  });
+
+  it('should use lock file registry for unscoped skills', async () => {
+    // Setup lock file with registry
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.lock'),
+      JSON.stringify({
+        lockfileVersion: 1,
+        skills: {
+          'find-skills': {
+            source: 'registry:find-skills',
+            version: 'main',
+            ref: 'main',
+            resolved: 'https://github.com/vercel-labs/skills',
+            commit: 'abc123',
+            installedAt: new Date().toISOString(),
+            registry: 'https://private-registry.example.com/',
+          },
+        },
+      }),
+    );
+
+    const manager = new SkillManager(tempDir);
+    const url = await callResolveRegistryUrl(manager, 'find-skills');
+    expect(url).toBe('https://private-registry.example.com/');
+  });
+
+  it('should probe configured registries when no lock file', async () => {
+    // Setup skills.json with a custom non-git-host registry
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({
+        skills: {},
+        registries: {
+          'my-registry': 'https://my-registry.example.com',
+        },
+      }),
+    );
+
+    const manager = new SkillManager(tempDir);
+
+    // Mock the RegistryClient to succeed on the custom registry
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: 'find-skills',
+      source_type: 'registry',
+    });
+
+    const url = await callResolveRegistryUrl(manager, 'find-skills');
+    expect(url).toBe('https://my-registry.example.com');
+  });
+
+  it('should skip git hosts during probe', async () => {
+    // Setup skills.json with only git-host registries
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({
+        skills: {},
+        registries: {
+          github: 'https://github.com',
+          gitlab: 'https://gitlab.com',
+        },
+      }),
+    );
+
+    const manager = new SkillManager(tempDir);
+
+    // No mock needed - git hosts are skipped, falls through to public registry
+    const url = await callResolveRegistryUrl(manager, 'find-skills');
+    expect(url).toBe('https://reskill.info/');
+  });
+
+  it('should fall back to PUBLIC_REGISTRY when nothing matches', async () => {
+    const url = await callResolveRegistryUrl(skillManager, 'unknown-skill');
+    expect(url).toBe('https://reskill.info/');
+  });
+});
+
+// ============================================================================
+// --registry auto-save to skills.json.registries tests
+// ============================================================================
+
+describe('SkillManager --registry auto-save to skills.json.registries', () => {
+  let tempDir: string;
+  let skillManager: SkillManager;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-registry-save-'));
+    skillManager = new SkillManager(tempDir);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should save custom registry URL to skills.json.registries on install', async () => {
+    // Create initial skills.json
+    fs.writeFileSync(path.join(tempDir, 'skills.json'), JSON.stringify({ skills: {} }));
+
+    const customRegistryUrl = 'https://private-registry.example.com/';
+
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: 'my-skill',
+      source_type: 'registry',
+    });
+
+    const registryResolver = (skillManager as unknown as { registryResolver: RegistryResolver })
+      .registryResolver;
+    vi.spyOn(registryResolver, 'resolve').mockResolvedValue({
+      parsed: {
+        scope: null,
+        name: 'my-skill',
+        version: '1.0.0',
+        fullName: 'my-skill',
+      },
+      shortName: 'my-skill',
+      version: '1.0.0',
+      registryUrl: customRegistryUrl,
+      tarball: Buffer.from('mock tarball'),
+      integrity: 'sha256-mockhash',
+    });
+
+    const mockSkillDir = path.join(tempDir, 'mock-skill');
+    fs.mkdirSync(mockSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), '# Skill');
+    vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
+
+    await skillManager.installToAgents('my-skill', ['cursor'], {
+      registry: customRegistryUrl,
+    });
+
+    // Read skills.json and verify registry was saved
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.json'), 'utf-8'));
+    expect(config.registries).toBeDefined();
+    expect(config.registries['private-registry.example.com']).toBe(customRegistryUrl);
+  });
+
+  it('should not save git host URLs to skills.json.registries', async () => {
+    fs.writeFileSync(path.join(tempDir, 'skills.json'), JSON.stringify({ skills: {} }));
+
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: 'my-skill',
+      source_type: 'registry',
+    });
+
+    const registryResolver = (skillManager as unknown as { registryResolver: RegistryResolver })
+      .registryResolver;
+    vi.spyOn(registryResolver, 'resolve').mockResolvedValue({
+      parsed: {
+        scope: null,
+        name: 'my-skill',
+        version: '1.0.0',
+        fullName: 'my-skill',
+      },
+      shortName: 'my-skill',
+      version: '1.0.0',
+      registryUrl: 'https://github.com/',
+      tarball: Buffer.from('mock tarball'),
+      integrity: 'sha256-mockhash',
+    });
+
+    const mockSkillDir = path.join(tempDir, 'mock-skill-gh');
+    fs.mkdirSync(mockSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), '# Skill');
+    vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
+
+    await skillManager.installToAgents('my-skill', ['cursor'], {
+      registry: 'https://github.com/',
+    });
+
+    // Git host URLs should NOT be saved as custom registries
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.json'), 'utf-8'));
+    // github should not appear as a custom entry (it's a default)
+    expect(config.registries?.['github.com']).toBeUndefined();
   });
 });
 

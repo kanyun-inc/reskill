@@ -131,6 +131,39 @@ describe('LockManager', () => {
       expect(installedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
       expect(installedAt.getTime()).toBeLessThanOrEqual(after.getTime());
     });
+
+    it('should persist registry URL when provided', () => {
+      const locked = lockManager.lockSkill('find-skills', {
+        source: 'registry:find-skills',
+        version: 'latest',
+        ref: 'latest',
+        resolved: 'https://private-registry.example.com/',
+        commit: '',
+        registry: 'https://private-registry.example.com/',
+      });
+
+      expect(locked.registry).toBe('https://private-registry.example.com/');
+
+      // Verify persisted to disk
+      const fromDisk = lockManager.get('find-skills');
+      expect(fromDisk?.registry).toBe('https://private-registry.example.com/');
+    });
+
+    it('should not include registry field when not provided', () => {
+      const locked = lockManager.lockSkill('git-skill', {
+        source: 'github:user/skill',
+        version: '1.0.0',
+        ref: 'v1.0.0',
+        resolved: 'https://github.com/user/skill',
+        commit: 'abc123',
+      });
+
+      expect(locked.registry).toBeUndefined();
+
+      // Verify no registry key in persisted JSON
+      const fromDisk = lockManager.get('git-skill');
+      expect(fromDisk?.registry).toBeUndefined();
+    });
   });
 
   describe('remove', () => {

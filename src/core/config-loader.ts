@@ -253,6 +253,17 @@ export class ConfigLoader {
   // ==========================================================================
 
   /**
+   * Get all configured registries (custom + default).
+   */
+  getRegistries(): Record<string, string> {
+    const config = this.getConfigOrDefault();
+    return {
+      ...DEFAULT_REGISTRIES,
+      ...config.registries,
+    };
+  }
+
+  /**
    * Get registry URL by name
    *
    * Resolution order:

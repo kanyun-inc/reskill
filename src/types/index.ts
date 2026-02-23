@@ -110,12 +110,18 @@ export interface LockedSkill {
   version: string;
   /** Git reference (tag, branch, commit) used for installation */
   ref: string;
-  /** Resolved full URL */
+  /** Actual download URL: Git repo URL, HTTP URL, or registry endpoint */
   resolved: string;
   /** Exact commit hash */
   commit: string;
   /** Installation time */
   installedAt: string;
+  /**
+   * Registry URL for registry-sourced skills.
+   * Used as O(1) fast-path lookup during reinstall/update of unscoped skills
+   * (e.g., "find-skills") whose skills.json ref carries no registry info.
+   */
+  registry?: string;
 }
 
 /**
@@ -256,6 +262,25 @@ export interface InstalledSkill {
 // ============================================================================
 
 /**
+ * Registry context for web-published skills.
+ *
+ * When a skill is discovered via registry but installed from an external source
+ * (GitHub/GitLab/OSS), this context carries the registry metadata so the
+ * downstream install methods use the registry name instead of deriving from
+ * the source URL.
+ */
+export interface RegistryInstallContext {
+  /** Skill name to use (registry short name, e.g., "vercel-react-best-practices") */
+  skillName: string;
+  /** Ref to store in skills.json (registry identifier, e.g., "@kanyun/vercel-react-best-practices") */
+  configRef: string;
+  /** Source to store in skills.lock (e.g., "registry:@kanyun/vercel-react-best-practices") */
+  lockSource: string;
+  /** Registry URL for lock file (used as fallback during reinstall/update) */
+  registryUrl: string;
+}
+
+/**
  * Installation options
  */
 export interface InstallOptions {
@@ -273,6 +298,8 @@ export interface InstallOptions {
   yes?: boolean;
   /** Registry URL override (for registry-based installs) */
   registry?: string;
+  /** Registry context for web-published skills (carries registry name through Git/HTTP install) */
+  registryContext?: RegistryInstallContext;
 }
 
 /**

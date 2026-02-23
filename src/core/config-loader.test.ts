@@ -396,6 +396,45 @@ describe('ConfigLoader', () => {
     });
   });
 
+  describe('getRegistries', () => {
+    it('should return default registries when no config', () => {
+      const registries = configLoader.getRegistries();
+      expect(registries.github).toBe('https://github.com');
+      expect(registries.gitlab).toBe('https://gitlab.com');
+    });
+
+    it('should merge custom registries with defaults', () => {
+      const testConfig: SkillsJson = {
+        skills: {},
+        registries: {
+          internal: 'https://gitlab.company.com',
+        },
+      };
+      fs.writeFileSync(path.join(tempDir, 'skills.json'), JSON.stringify(testConfig));
+
+      const loader = new ConfigLoader(tempDir);
+      const registries = loader.getRegistries();
+      expect(registries.github).toBe('https://github.com');
+      expect(registries.gitlab).toBe('https://gitlab.com');
+      expect(registries.internal).toBe('https://gitlab.company.com');
+    });
+
+    it('should allow custom registries to override defaults', () => {
+      const testConfig: SkillsJson = {
+        skills: {},
+        registries: {
+          github: 'https://github.enterprise.com',
+        },
+      };
+      fs.writeFileSync(path.join(tempDir, 'skills.json'), JSON.stringify(testConfig));
+
+      const loader = new ConfigLoader(tempDir);
+      const registries = loader.getRegistries();
+      expect(registries.github).toBe('https://github.enterprise.com');
+      expect(registries.gitlab).toBe('https://gitlab.com');
+    });
+  });
+
   describe('registries in skills.json', () => {
     it('should create config with custom registries', () => {
       const config = configLoader.create({
