@@ -1466,6 +1466,169 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
     });
   });
 
+  describe('self-hosted GitLab/GitHub support', () => {
+    it('should use host as prefix for self-hosted GitLab with skill_path', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/log-helper',
+        source_type: 'gitlab',
+        source_url: 'https://gitlab.internal.example.com/team/skills-repo',
+        skill_path: 'log-helper',
+      });
+
+      const installFromGitSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installToAgentsFromGit',
+        )
+        .mockResolvedValue({
+          skill: {
+            name: 'log-helper',
+            path: '/tmp/skill',
+            version: '1.0.0',
+            source: 'gitlab',
+          },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      await manager.installToAgents('@kanyun/log-helper', ['cursor']);
+
+      // Self-hosted GitLab should use host as prefix, not "gitlab"
+      expect(installFromGitSpy).toHaveBeenCalledWith(
+        'gitlab.internal.example.com:team/skills-repo/log-helper',
+        ['cursor'],
+        expect.any(Object),
+      );
+    });
+
+    it('should use host as prefix for self-hosted GitHub Enterprise with skill_path', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/my-skill',
+        source_type: 'github',
+        source_url: 'https://github.company.com/org/skills-monorepo',
+        skill_path: 'skills/my-skill',
+      });
+
+      const installFromGitSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installToAgentsFromGit',
+        )
+        .mockResolvedValue({
+          skill: {
+            name: 'my-skill',
+            path: '/tmp/skill',
+            version: '1.0.0',
+            source: 'github',
+          },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      await manager.installToAgents('@kanyun/my-skill', ['cursor']);
+
+      expect(installFromGitSpy).toHaveBeenCalledWith(
+        'github.company.com:org/skills-monorepo/skills/my-skill',
+        ['cursor'],
+        expect.any(Object),
+      );
+    });
+
+    it('should still use "gitlab" prefix for standard gitlab.com with skill_path', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/seo',
+        source_type: 'gitlab',
+        source_url: 'https://gitlab.com/org/skills-repo',
+        skill_path: 'skills/seo',
+      });
+
+      const installFromGitSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installToAgentsFromGit',
+        )
+        .mockResolvedValue({
+          skill: { name: 'seo', path: '/tmp/skill', version: '1.0.0', source: 'gitlab' },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      await manager.installToAgents('@kanyun/seo', ['cursor']);
+
+      expect(installFromGitSpy).toHaveBeenCalledWith(
+        'gitlab:org/skills-repo/skills/seo',
+        ['cursor'],
+        expect.any(Object),
+      );
+    });
+
+    it('should still use "github" prefix for standard github.com with skill_path', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/accessibility',
+        source_type: 'github',
+        source_url: 'https://github.com/user/web-quality-skills',
+        skill_path: 'skills/accessibility',
+      });
+
+      const installFromGitSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installToAgentsFromGit',
+        )
+        .mockResolvedValue({
+          skill: {
+            name: 'accessibility',
+            path: '/tmp/skill',
+            version: '1.0.0',
+            source: 'github',
+          },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      await manager.installToAgents('@kanyun/accessibility', ['cursor']);
+
+      expect(installFromGitSpy).toHaveBeenCalledWith(
+        'github:user/web-quality-skills/skills/accessibility',
+        ['cursor'],
+        expect.any(Object),
+      );
+    });
+
+    it('should use source_url as-is for self-hosted GitLab without skill_path', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/single-skill',
+        source_type: 'gitlab',
+        source_url: 'https://gitlab.internal.example.com/team/single-skill',
+      });
+
+      const installFromGitSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installToAgentsFromGit',
+        )
+        .mockResolvedValue({
+          skill: {
+            name: 'single-skill',
+            path: '/tmp/skill',
+            version: '1.0.0',
+            source: 'gitlab',
+          },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      await manager.installToAgents('@kanyun/single-skill', ['cursor']);
+
+      // Without skill_path, source_url should be passed as-is
+      expect(installFromGitSpy).toHaveBeenCalledWith(
+        'https://gitlab.internal.example.com/team/single-skill',
+        ['cursor'],
+        expect.any(Object),
+      );
+    });
+  });
+
   describe('source_url 校验', () => {
     it('should throw error when source_url is missing for web-published skill', async () => {
       const { RegistryClient } = await import('./registry-client.js');
