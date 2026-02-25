@@ -46,37 +46,44 @@ npx reskill@latest <command>  # 或直接使用 npx
 | 命令                  | 别名                 | 说明                      |
 | --------------------- | -------------------- | ------------------------- |
 | `init`                | -                    | 初始化 `skills.json`      |
-| `find <query>`        | -                    | 在 registry 中搜索 skills |
+| `find <query>`        | `search`             | 在 registry 中搜索 skills |
 | `install [skills...]` | `i`                  | 安装一个或多个 skills     |
 | `list`                | `ls`                 | 列出已安装的 skills       |
 | `info <skill>`        | -                    | 查看 skill 详情           |
 | `update [skill]`      | `up`                 | 更新 skills               |
 | `outdated`            | -                    | 检查过期的 skills         |
-| `uninstall <skill>`   | `un`, `rm`, `remove` | 卸载 skill                |
+| `uninstall <skills...>` | `un`, `rm`, `remove` | 卸载一个或多个 skills     |
 | `publish [path]`      | `pub`                | 发布 skill 到 registry ¹  |
 | `login`               | -                    | 登录 registry ¹           |
 | `logout`              | -                    | 登出 registry ¹           |
 | `whoami`              | -                    | 显示当前登录用户 ¹        |
 | `doctor`              | -                    | 诊断环境并检查问题        |
-| `completion install`  | -                    | 安装 Shell Tab 补全       |
+| `completion install\|uninstall` | -              | 安装或移除 Shell Tab 补全 |
 
 > ¹ Registry 相关命令（`publish`、`login`、`logout`、`whoami`）需要部署私有 registry 后才能使用，暂不对外开放。
 
 ### 常用选项
 
-| 选项                      | 适用命令                             | 说明                                         |
-| ------------------------- | ------------------------------------ | -------------------------------------------- |
-| `--no-save`               | `install`                            | 安装时不保存到 `skills.json`（用于个人技能） |
-| `-g, --global`            | `install`, `uninstall`, `list`       | 全局安装/管理技能（用户目录）                |
-| `-a, --agent <agents...>` | `install`                            | 指定目标 Agent（如 `cursor`, `claude-code`） |
-| `--mode <mode>`           | `install`                            | 安装模式：`symlink`（默认）或 `copy`         |
-| `--all`                   | `install`                            | 安装到所有 Agent                             |
-| `-y, --yes`               | `install`, `uninstall`, `publish`    | 跳过确认提示                                 |
-| `-f, --force`             | `install`                            | 强制重新安装                                 |
-| `-s, --skill <names...>`  | `install`                            | 从多 skill 仓库中选择指定 skill              |
-| `--list`                  | `install`                            | 列出仓库中可用的 skills（不安装）            |
-| `-r, --registry <url>`    | `install`                            | 覆盖 registry URL（用于 registry 安装）      |
-| `-j, --json`              | `list`, `info`, `outdated`, `doctor` | JSON 格式输出                                |
+| 选项                      | 适用命令                                             | 说明                                         |
+| ------------------------- | ---------------------------------------------------- | -------------------------------------------- |
+| `--no-save`               | `install`                                            | 安装时不保存到 `skills.json`（用于个人技能） |
+| `-g, --global`            | `install`, `uninstall`, `list`                       | 全局安装/管理技能（用户目录）                |
+| `-a, --agent <agents...>` | `install`                                            | 指定目标 Agent（如 `cursor`, `claude-code`） |
+| `--mode <mode>`           | `install`                                            | 安装模式：`symlink`（默认）或 `copy`         |
+| `--all`                   | `install`                                            | 安装到所有 Agent                             |
+| `-y, --yes`               | `init`, `install`, `uninstall`, `publish`            | 跳过确认提示                                 |
+| `-f, --force`             | `install`                                            | 强制重新安装                                 |
+| `-s, --skill <names...>`  | `install`                                            | 从多 skill 仓库中选择指定 skill              |
+| `--list`                  | `install`                                            | 列出仓库中可用的 skills（不安装）            |
+| `-d, --install-dir <dir>` | `init`                                               | Skills 安装目录（默认：`.skills`）           |
+| `-r, --registry <url>`    | `install`, `find`, `publish`, `login`, `logout`, `whoami` | 覆盖 registry URL                           |
+| `-t, --token <token>`     | `login`                                              | Web UI 生成的 API token（登录必需）          |
+| `-t, --tag <tag>`         | `publish`                                            | 要发布的 Git tag                             |
+| `--access <level>`        | `publish`                                            | 访问级别：`public` 或 `restricted`           |
+| `-n, --dry-run`           | `publish`                                            | 验证但不发布                                 |
+| `-l, --limit <n>`         | `find`                                               | 最大搜索结果数（默认：`10`）                 |
+| `--skip-network`          | `doctor`                                             | 跳过网络连通性检查                           |
+| `-j, --json`              | `list`, `info`, `outdated`, `doctor`, `find`         | JSON 格式输出                                |
 
 运行 `reskill <command> --help` 查看完整选项和详细用法。
 
@@ -174,7 +181,8 @@ npx reskill@latest install https://github.com/org/monorepo/tree/main/skills/plan
   "defaults": {
     "installDir": ".skills",
     "targetAgents": ["cursor", "claude-code"],
-    "installMode": "symlink"
+    "installMode": "symlink",
+    "publishRegistry": "https://your-registry.example.com"
   }
 }
 ```
@@ -194,7 +202,7 @@ Skills 默认安装到 `.skills/`，可与任何 Agent 集成：
 
 | Agent          | 路径                                  |
 | -------------- | ------------------------------------- |
-| Cursor         | `.cursor/rules/` 或 `.cursor/skills/` |
+| Cursor         | `.cursor/skills/`                     |
 | Claude Code    | `.claude/skills/`                     |
 | Codex          | `.codex/skills/`                      |
 | Windsurf       | `.windsurf/skills/`                   |
@@ -208,8 +216,10 @@ Skills 默认安装到 `.skills/`，可与任何 Agent 集成：
 将你的 skills 发布到 registry 供他人使用：
 
 ```bash
-# 登录 registry
-reskill login
+# 登录 registry（需要 token，从 Web UI 获取）
+reskill login --token <your-token>
+# 或指定自定义 registry
+reskill login --registry <your-registry-url> --token <your-token>
 
 # 验证但不发布（预览模式）
 reskill publish --dry-run
@@ -226,7 +236,7 @@ reskill publish
 | ------------------- | ------------------------------- | ------------------------------ |
 | `RESKILL_CACHE_DIR` | 全局缓存目录                    | `~/.reskill-cache`             |
 | `RESKILL_TOKEN`     | 认证令牌（优先于 ~/.reskillrc） | -                              |
-| `RESKILL_REGISTRY`  | 默认 registry URL               | `https://registry.reskill.dev` |
+| `RESKILL_REGISTRY`  | 默认 registry URL               | `https://reskill.info/`        |
 | `DEBUG`             | 启用调试日志                    | -                              |
 | `NO_COLOR`          | 禁用彩色输出                    | -                              |
 

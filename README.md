@@ -46,37 +46,44 @@ npx reskill@latest <command>  # Or use npx directly
 | Command               | Alias                | Description                               |
 | --------------------- | -------------------- | ----------------------------------------- |
 | `init`                | -                    | Initialize `skills.json`                  |
-| `find <query>`        | -                    | Search for skills in the registry         |
+| `find <query>`        | `search`             | Search for skills in the registry         |
 | `install [skills...]` | `i`                  | Install one or more skills                |
 | `list`                | `ls`                 | List installed skills                     |
 | `info <skill>`        | -                    | Show skill details                        |
 | `update [skill]`      | `up`                 | Update skills                             |
 | `outdated`            | -                    | Check for outdated skills                 |
-| `uninstall <skill>`   | `un`, `rm`, `remove` | Remove a skill                            |
+| `uninstall <skills...>` | `un`, `rm`, `remove` | Remove one or more skills                 |
 | `publish [path]`      | `pub`                | Publish a skill to the registry ¹         |
 | `login`               | -                    | Authenticate with the registry ¹          |
 | `logout`              | -                    | Remove stored authentication ¹            |
 | `whoami`              | -                    | Display current logged in user ¹          |
 | `doctor`              | -                    | Diagnose environment and check for issues |
-| `completion install`  | -                    | Install shell tab completion              |
+| `completion install\|uninstall` | -              | Install or remove shell tab completion    |
 
 > ¹ Registry commands (`publish`, `login`, `logout`, `whoami`) require a private registry deployment. Not available for public use yet.
 
 ### Common Options
 
-| Option                    | Commands                             | Description                                                   |
-| ------------------------- | ------------------------------------ | ------------------------------------------------------------- |
-| `--no-save`               | `install`                            | Install without saving to `skills.json` (for personal skills) |
-| `-g, --global`            | `install`, `uninstall`, `list`       | Install/manage skills globally (user directory)               |
-| `-a, --agent <agents...>` | `install`                            | Specify target agents (e.g., `cursor`, `claude-code`)         |
-| `--mode <mode>`           | `install`                            | Installation mode: `symlink` (default) or `copy`              |
-| `--all`                   | `install`                            | Install to all agents                                         |
-| `-y, --yes`               | `install`, `uninstall`, `publish`    | Skip confirmation prompts                                     |
-| `-f, --force`             | `install`                            | Force reinstall even if already installed                     |
-| `-s, --skill <names...>`  | `install`                            | Select specific skill(s) by name from a multi-skill repo      |
-| `--list`                  | `install`                            | List available skills in the repository without installing    |
-| `-r, --registry <url>`    | `install`                            | Registry URL override for registry-based installs             |
-| `-j, --json`              | `list`, `info`, `outdated`, `doctor` | Output as JSON                                                |
+| Option                    | Commands                                             | Description                                                   |
+| ------------------------- | ---------------------------------------------------- | ------------------------------------------------------------- |
+| `--no-save`               | `install`                                            | Install without saving to `skills.json` (for personal skills) |
+| `-g, --global`            | `install`, `uninstall`, `list`                       | Install/manage skills globally (user directory)               |
+| `-a, --agent <agents...>` | `install`                                            | Specify target agents (e.g., `cursor`, `claude-code`)         |
+| `--mode <mode>`           | `install`                                            | Installation mode: `symlink` (default) or `copy`              |
+| `--all`                   | `install`                                            | Install to all agents                                         |
+| `-y, --yes`               | `init`, `install`, `uninstall`, `publish`            | Skip confirmation prompts                                     |
+| `-f, --force`             | `install`                                            | Force reinstall even if already installed                     |
+| `-s, --skill <names...>`  | `install`                                            | Select specific skill(s) by name from a multi-skill repo      |
+| `--list`                  | `install`                                            | List available skills in the repository without installing    |
+| `-d, --install-dir <dir>` | `init`                                               | Skills installation directory (default: `.skills`)            |
+| `-r, --registry <url>`    | `install`, `find`, `publish`, `login`, `logout`, `whoami` | Registry URL override                                        |
+| `-t, --token <token>`     | `login`                                              | API token from Web UI (required for login)                    |
+| `-t, --tag <tag>`         | `publish`                                            | Git tag to publish                                            |
+| `--access <level>`        | `publish`                                            | Access level: `public` or `restricted`                        |
+| `-n, --dry-run`           | `publish`                                            | Validate without publishing                                   |
+| `-l, --limit <n>`         | `find`                                               | Maximum number of search results (default: `10`)              |
+| `--skip-network`          | `doctor`                                             | Skip network connectivity checks                             |
+| `-j, --json`              | `list`, `info`, `outdated`, `doctor`, `find`         | Output as JSON                                                |
 
 Run `reskill <command> --help` for complete options and detailed usage.
 
@@ -174,7 +181,8 @@ Skills can be installed directly from HTTP/HTTPS URLs pointing to archive files:
   "defaults": {
     "installDir": ".skills",
     "targetAgents": ["cursor", "claude-code"],
-    "installMode": "symlink"
+    "installMode": "symlink",
+    "publishRegistry": "https://your-registry.example.com"
   }
 }
 ```
@@ -194,7 +202,7 @@ Skills are installed to `.skills/` by default and can be integrated with any age
 
 | Agent          | Path                                  |
 | -------------- | ------------------------------------- |
-| Cursor         | `.cursor/rules/` or `.cursor/skills/` |
+| Cursor         | `.cursor/skills/`                     |
 | Claude Code    | `.claude/skills/`                     |
 | Codex          | `.codex/skills/`                      |
 | Windsurf       | `.windsurf/skills/`                   |
@@ -208,8 +216,10 @@ Skills are installed to `.skills/` by default and can be integrated with any age
 Publish your skills to the registry for others to use:
 
 ```bash
-# Login to the registry
-reskill login
+# Login to the registry (token required, get it from Web UI)
+reskill login --token <your-token>
+# Or specify a custom registry
+reskill login --registry <your-registry-url> --token <your-token>
 
 # Validate without publishing (dry run)
 reskill publish --dry-run
@@ -226,7 +236,7 @@ For detailed publishing guidelines, see the [CLI Specification](./docs/cli-spec.
 | ------------------- | ----------------------------------------------- | ------------------------------ |
 | `RESKILL_CACHE_DIR` | Global cache directory                          | `~/.reskill-cache`             |
 | `RESKILL_TOKEN`     | Auth token (takes precedence over ~/.reskillrc) | -                              |
-| `RESKILL_REGISTRY`  | Default registry URL                            | `https://registry.reskill.dev` |
+| `RESKILL_REGISTRY`  | Default registry URL                            | `https://reskill.info/`        |
 | `DEBUG`             | Enable debug logging                            | -                              |
 | `NO_COLOR`          | Disable colored output                          | -                              |
 
