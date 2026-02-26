@@ -695,34 +695,52 @@ reskill login [options]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `-r, --registry <url>` | `https://registry.reskill.dev` | Registry URL |
-| `--token <token>` | - | Use token directly (for CI/CD) |
+| `-r, --registry <url>` | (from env or skills.json) | Registry URL |
+| `-t, --token <token>` | - | Use token directly (skips interactive prompt, for CI/CD) |
 
 ### Behavior
 
 | Scenario | Expected Behavior | Exit Code |
 |----------|-------------------|-----------|
-| Interactive login | Prompt for token, save to ~/.reskillrc | `0` |
-| `--token` provided | Save token, verify with registry | `0` |
-| Invalid token | Error: "Invalid token" | `1` |
-| Already logged in | Info: show current user, offer to re-login | `0` |
+| Interactive login (no `--token`) | Show token page URL, prompt for token, verify & save to ~/.reskillrc | `0` |
+| `--token` provided | Verify token with registry, save to ~/.reskillrc | `0` |
+| Invalid token | Error: "Token verification failed" | `1` |
+| User cancels prompt | Info: "Login cancelled" | `0` |
 
 ### Output
 
-**Interactive:**
+**Interactive (default):**
 ```
-? Enter your access token: ********
+  Registry: https://registry.example.com
 
-Verifying token...
-✓ Logged in as octocat (octocat@github.com)
+  To get your access token:
+    1. Open https://registry.example.com/skills/tokens
+    2. Login and generate an API token
+    3. Copy the token and paste it below
+
+  Paste your access token: ••••••••
+
+Verifying token with https://registry.example.com...
+
+✓ Token verified and saved!
+  Handle: @octocat
+  Username: octocat
+  Email: octocat@github.com
+  Registry: https://registry.example.com
 
 Token saved to ~/.reskillrc
 ```
 
-**With --token:**
+**With --token (non-interactive):**
 ```
-Verifying token...
-✓ Logged in as octocat (octocat@github.com)
+Verifying token with https://registry.example.com...
+
+✓ Token verified and saved!
+  Handle: @octocat
+  Username: octocat
+  Registry: https://registry.example.com
+
+Token saved to ~/.reskillrc
 ```
 
 ### Configuration File

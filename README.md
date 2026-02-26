@@ -208,8 +208,11 @@ Skills are installed to `.skills/` by default and can be integrated with any age
 Publish your skills to the registry for others to use:
 
 ```bash
-# Login to the registry
+# Interactive login (recommended for humans — guides you through token setup)
 reskill login
+
+# Non-interactive login (for CI/CD — pass token directly)
+reskill login --token <your-token>
 
 # Validate without publishing (dry run)
 reskill publish --dry-run

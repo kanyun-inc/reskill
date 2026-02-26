@@ -1,11 +1,11 @@
 /**
  * login command unit tests
  *
- * Tests for login command definition and options
+ * Tests for login command definition, options, and interactive helpers
  */
 
 import { describe, expect, it } from 'vitest';
-import { loginCommand } from './login.js';
+import { getTokenPageUrl, loginCommand } from './login.js';
 
 describe('login command', () => {
   // ============================================================================
@@ -39,18 +39,15 @@ describe('login command', () => {
       expect(tokenOption?.flags).toContain('-t');
       expect(tokenOption?.flags).toContain('--token');
       expect(tokenOption?.description).toContain('token');
-      expect(tokenOption?.description).toContain('Web UI');
     });
 
     it('registry option should accept a URL argument', () => {
       const registryOption = loginCommand.options.find((opt) => opt.long === '--registry');
-      // The flags contain <url> which indicates it takes an argument
       expect(registryOption?.flags).toContain('<url>');
     });
 
     it('token option should accept a token argument', () => {
       const tokenOption = loginCommand.options.find((opt) => opt.long === '--token');
-      // The flags contain <token> which indicates it takes an argument
       expect(tokenOption?.flags).toContain('<token>');
     });
   });
@@ -61,8 +58,6 @@ describe('login command', () => {
 
   describe('option configuration', () => {
     it('should have 2 custom options (registry, token)', () => {
-      // login has: -r/--registry, -t/--token
-      // Note: --help is added automatically by commander but not in options array
       expect(loginCommand.options.length).toBe(2);
     });
 
@@ -81,25 +76,49 @@ describe('login command', () => {
       expect(registryOption?.description).toContain('RESKILL_REGISTRY');
     });
 
-    it('token option description should mention Web UI', () => {
+    it('token option description should indicate it skips interactive prompt', () => {
       const tokenOption = loginCommand.options.find((opt) => opt.long === '--token');
-      // Token-only login: description should mention Web UI
-      expect(tokenOption?.description).toContain('Web UI');
+      expect(tokenOption?.description).toContain('skips interactive');
     });
   });
 
   // ============================================================================
-  // Token-only login tests (email/password removed)
+  // Interactive login support tests
   // ============================================================================
 
-  describe('token-only login', () => {
-    it('token option should indicate it is required', () => {
-      // After removing email/password login, token should be the only way to login
-      // The --token option description should indicate it's required
+  describe('interactive login', () => {
+    it('token option should not be mandatory for the command', () => {
       const tokenOption = loginCommand.options.find((opt) => opt.long === '--token');
       expect(tokenOption).toBeDefined();
-      // Description should indicate it's required
-      expect(tokenOption?.description?.toLowerCase()).toContain('required');
+      expect(tokenOption?.mandatory).toBeFalsy();
     });
+  });
+});
+
+// ============================================================================
+// Helper function tests
+// ============================================================================
+
+describe('getTokenPageUrl', () => {
+  it('should append /skills/tokens to registry URL', () => {
+    expect(getTokenPageUrl('https://registry.example.com')).toBe(
+      'https://registry.example.com/skills/tokens',
+    );
+  });
+
+  it('should strip trailing slash before appending path', () => {
+    expect(getTokenPageUrl('https://registry.example.com/')).toBe(
+      'https://registry.example.com/skills/tokens',
+    );
+  });
+
+  it('should work with localhost URLs', () => {
+    expect(getTokenPageUrl('http://localhost:3000')).toBe('http://localhost:3000/skills/tokens');
+  });
+
+  it('should work with URLs that have subpaths', () => {
+    expect(getTokenPageUrl('https://example.com/registry')).toBe(
+      'https://example.com/registry/skills/tokens',
+    );
   });
 });

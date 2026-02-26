@@ -188,6 +188,10 @@ When creating or modifying a CLI command, add both unit tests and integration te
 - Use conventional commit format: `type(scope): description`
 - Types: feat, fix, docs, style, refactor, test, chore
 - Keep commits focused and atomic
+- **Before committing**, check if the change requires:
+  - A **changeset** (see Changeset Guidelines below) for any public behavior change
+  - A **README update** if CLI commands, options, or output changed
+  - A **docs update** if architecture or new concepts were introduced
 
 ```
 feat(cli): add multi-agent support for install command

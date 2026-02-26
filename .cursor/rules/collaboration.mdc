@@ -34,6 +34,10 @@ alwaysApply: true
   3. Never skip the RED step — a test that never failed proves nothing
   4. After fix: build and run `node dist/cli/index.js <command>` to manually verify the actual CLI behavior matches expectations
 - Commit only when explicitly asked
+- Before creating a commit, always check:
+  1. **Changeset**: If the change affects public behavior (bug fix / feature / breaking), create a changeset file in `.changeset/` following the bilingual format in `development.mdc`
+  2. **README**: If CLI command behavior, options, or output changed, check if `README.md` needs updating
+  3. **Docs**: If the change introduces new concepts or modifies architecture, check if `docs/` or `CLAUDE.md` need updating
 
 ## What I Value
 
