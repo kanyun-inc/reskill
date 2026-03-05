@@ -75,7 +75,8 @@ npx reskill@latest <command>  # 或直接使用 npx
 | `-f, --force`             | `install`                            | 强制重新安装                                 |
 | `-s, --skill <names...>`  | `install`                            | 从多 skill 仓库中选择指定 skill              |
 | `--list`                  | `install`                            | 列出仓库中可用的 skills（不安装）            |
-| `-r, --registry <url>`    | `install`                            | 覆盖 registry URL（用于 registry 安装）      |
+| `-r, --registry <url>`    | `install`, `publish`                 | 覆盖 registry URL（用于 registry 安装）      |
+| `-t, --token <token>`     | `install`                            | 认证令牌（用于 CI/CD 访问私有 skill）        |
 | `-j, --json`              | `list`, `info`, `outdated`, `doctor` | JSON 格式输出                                |
 
 运行 `reskill <command> --help` 查看完整选项和详细用法。
@@ -219,6 +220,21 @@ reskill publish
 ```
 
 详细的发布指南请参考 [CLI 规范](./docs/cli-spec.md#publish)。
+
+### 安装私有 Skills
+
+通过 `reskill login` 登录后，`reskill install` 会自动使用 `~/.reskillrc` 中的 token 访问私有 skill：
+
+```bash
+# 自动从 ~/.reskillrc 读取 token（需配合 --registry 指定 registry）
+reskill install @scope/private-skill --registry https://your-registry.com
+
+# 或通过 RESKILL_TOKEN 环境变量（无需 --registry）
+RESKILL_TOKEN=<token> reskill install @scope/private-skill
+
+# 或直接传入 token（用于 CI/CD）
+reskill install @scope/private-skill --registry https://your-registry.com --token <token>
+```
 
 ## 环境变量
 

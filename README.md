@@ -224,6 +224,21 @@ reskill publish
 
 For detailed publishing guidelines, see the [CLI Specification](./docs/cli-spec.md#publish).
 
+### Installing Private Skills
+
+After logging in with `reskill login`, the token stored in `~/.reskillrc` is automatically used during `reskill install` to access private skills:
+
+```bash
+# Token is automatically read from ~/.reskillrc (requires --registry to match)
+reskill install @scope/private-skill --registry https://your-registry.com
+
+# Or use RESKILL_TOKEN env var (works without --registry)
+RESKILL_TOKEN=<token> reskill install @scope/private-skill
+
+# Or pass token directly (for CI/CD)
+reskill install @scope/private-skill --registry https://your-registry.com --token <token>
+```
+
 ## Environment Variables
 
 | Variable            | Description                                     | Default                        |

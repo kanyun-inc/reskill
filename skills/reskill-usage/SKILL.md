@@ -87,7 +87,8 @@ Run `reskill <command> --help` for complete options and detailed usage.
 | `-f, --force`             | `install`                            | Force reinstall even if already installed                     |
 | `-s, --skill <names...>`  | `install`                            | Select specific skill(s) by name from a multi-skill repo      |
 | `--list`                  | `install`                            | List available skills in the repository without installing    |
-| `-r, --registry <url>`    | `install`                            | Registry URL override for registry-based installs             |
+| `-r, --registry <url>`    | `install`, `publish`                 | Registry URL override for registry-based installs             |
+| `-t, --token <token>`     | `install`                            | Auth token for registry API requests (for CI/CD)              |
 | `-j, --json`              | `list`, `info`, `outdated`, `doctor` | Output as JSON                                                |
 
 ## Source Formats
