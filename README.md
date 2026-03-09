@@ -117,7 +117,7 @@ npx reskill@latest install github:user/skill1 github:user/skill2@v1.0.0
 
 ### Monorepo Support
 
-For repositories containing multiple skills (monorepo), specify the path to the skill directory:
+For repositories containing multiple skills (monorepo), you can install a specific skill by path or install all skills from a parent directory:
 
 ```bash
 # Shorthand format with subpath
@@ -130,9 +130,12 @@ npx reskill@latest install git@gitlab.company.com:team/skills.git/backend/apis@v
 
 # GitHub web URL automatically extracts subpath
 npx reskill@latest install https://github.com/org/monorepo/tree/main/skills/planning
+
+# Point to a parent directory — auto-detects and installs all child skills
+npx reskill@latest install https://github.com/org/monorepo/tree/main/skills
 ```
 
-**Requirements**: The specified directory must contain a valid `SKILL.md` file following the [Agent Skills Specification](https://agentskills.io).
+When the target directory has no root `SKILL.md` but contains subdirectories with `SKILL.md` files, reskill automatically discovers and installs all child skills. Each skill is saved separately in `skills.json`.
 
 ### HTTP/OSS URL Support
 

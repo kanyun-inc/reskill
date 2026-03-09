@@ -875,6 +875,61 @@ export class SkillManager {
   // ============================================================================
 
   /**
+   * Detect whether a ref points to a single skill or a multi-skill directory.
+   *
+   * Returns `{ type: 'single' }` when the cached root contains a SKILL.md (or
+   * when the source is registry/HTTP — those are always single-skill).
+   * Returns `{ type: 'multi', skills }` when the root has **no** SKILL.md but
+   * `discoverSkillsInDir()` finds child skills underneath.
+   *
+   * The method caches the repo as a side-effect so that the subsequent
+   * `installToAgents` / `installSkillsFromRepo` call hits the cache.
+   */
+  async detectSkillsInRef(
+    ref: string,
+  ): Promise<
+    | { type: 'single' }
+    | { type: 'multi'; skills: ParsedSkillWithPath[] }
+  > {
+    // Only Git refs can be multi-skill directories
+    if (this.isRegistrySource(ref) || this.isHttpSource(ref)) {
+      return { type: 'single' };
+    }
+
+    const resolved = await this.resolver.resolve(ref);
+    const { parsed } = resolved;
+    const gitRef = resolved.ref;
+
+    // Ensure the repo is cached
+    let cacheResult = await this.cache.get(parsed, gitRef);
+    if (!cacheResult) {
+      cacheResult = await this.cache.cache(resolved.repoUrl, parsed, gitRef, gitRef);
+    }
+
+    const cachePath = this.cache.getCachePath(parsed, gitRef);
+
+    // When parsed.skillName is set (ref has #fragment), resolve to the
+    // specific skill subdirectory so we check the right SKILL.md.
+    const sourcePath = this.resolveSourcePath(cachePath, parsed);
+    const metadata = this.getSkillMetadataFromDir(sourcePath);
+
+    if (metadata) {
+      return { type: 'single' };
+    }
+
+    // No SKILL.md at root — check for child skills.
+    // Use cachePath (not sourcePath) to match installSkillsFromRepo's scan scope.
+    const discovered = discoverSkillsInDir(cachePath);
+    if (discovered.length > 0) {
+      return { type: 'multi', skills: discovered };
+    }
+
+    // No skills found at all. Return 'single' so the caller proceeds to
+    // installToAgents, which will produce a clear error ("no SKILL.md found").
+    return { type: 'single' };
+  }
+
+  /**
    * Install skill to multiple agents
    *
    * @param ref - Skill reference (e.g., github:user/repo@v1.0.0 or HTTP URL)

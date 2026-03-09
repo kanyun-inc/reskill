@@ -117,7 +117,7 @@ npx reskill@latest install github:user/skill1 github:user/skill2@v1.0.0
 
 ### Monorepo 支持
 
-对于包含多个技能的仓库（monorepo），可以指定技能目录的路径：
+对于包含多个技能的仓库（monorepo），可以指定技能目录的路径安装单个技能，也可以指向父目录一键安装所有技能：
 
 ```bash
 # 简写格式带子路径
@@ -130,9 +130,12 @@ npx reskill@latest install git@gitlab.company.com:team/skills.git/backend/apis@v
 
 # GitHub 网页 URL 自动提取子路径
 npx reskill@latest install https://github.com/org/monorepo/tree/main/skills/planning
+
+# 指向父目录 — 自动发现并安装所有子技能
+npx reskill@latest install https://github.com/org/monorepo/tree/main/skills
 ```
 
-**要求**：指定的目录必须包含符合 [Agent Skills 规范](https://agentskills.io) 的有效 `SKILL.md` 文件。
+当目标目录没有根 `SKILL.md` 但包含带有 `SKILL.md` 的子目录时，reskill 会自动发现并安装所有子技能。每个技能会分别保存到 `skills.json` 中。
 
 ### HTTP/OSS URL 支持
 

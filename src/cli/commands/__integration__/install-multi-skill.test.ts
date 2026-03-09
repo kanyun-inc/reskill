@@ -171,4 +171,48 @@ describe('CLI Integration: install --skill / --list (multi-skill repo)', () => {
       expect(getOutput(result)).not.toMatch(/Failed to clone/i);
     });
   });
+
+  describe('auto-detect multi-skill directory (no --skill / --list)', () => {
+    // The outer repoUrl fixture (createLocalMultiSkillRepo) has NO root SKILL.md —
+    // skills live under skills/{name}/SKILL.md. This is what triggers auto-detection.
+
+    it('should auto-detect and install all child skills when ref has no root SKILL.md', () => {
+      const result = runCli(`install ${repoUrl} -a cursor -y`, tempDir);
+      const output = getOutput(result);
+
+      expect(result.exitCode).toBe(0);
+      // Should mention found skills
+      expect(output).toMatch(/Found.*skill/i);
+      // All three child skills should be installed flat
+      expect(pathExists(path.join(tempDir, '.cursor', 'skills', 'pdf', 'SKILL.md'))).toBe(true);
+      expect(pathExists(path.join(tempDir, '.cursor', 'skills', 'commit', 'SKILL.md'))).toBe(true);
+      expect(
+        pathExists(path.join(tempDir, '.cursor', 'skills', 'pr-review', 'SKILL.md')),
+      ).toBe(true);
+    });
+
+    it('should save each skill separately in skills.json', () => {
+      const result = runCli(`install ${repoUrl} -a cursor -y`, tempDir);
+      expect(result.exitCode).toBe(0);
+
+      const config = readSkillsJson(tempDir);
+      expect(config.skills?.pdf).toBeDefined();
+      expect(config.skills?.commit).toBeDefined();
+      expect(config.skills?.['pr-review']).toBeDefined();
+      // Each should have the ref#name format
+      expect(config.skills.pdf).toMatch(/#pdf$/);
+      expect(config.skills.commit).toMatch(/#commit$/);
+      expect(config.skills['pr-review']).toMatch(/#pr-review$/);
+    });
+
+    it('should show multi-skill install summary', () => {
+      const result = runCli(`install ${repoUrl} -a cursor -y`, tempDir);
+      const output = getOutput(result);
+      expect(result.exitCode).toBe(0);
+      expect(output).toContain('pdf');
+      expect(output).toContain('commit');
+      expect(output).toContain('pr-review');
+      expect(output).toMatch(/Installed.*3.*skill/i);
+    });
+  });
 });

@@ -568,6 +568,89 @@ description: ${s.description}
       ).rejects.toThrow(/No valid skills found/);
     });
   });
+
+  describe('detectSkillsInRef', () => {
+    let repoDir: string;
+
+    function createLocalRepo(
+      structure: 'single' | 'multi' | 'empty',
+    ): string {
+      const repoPath = path.join(repoDir, `detect-${structure}-repo`);
+      fs.mkdirSync(repoPath, { recursive: true });
+
+      if (structure === 'single') {
+        // Single skill at root
+        fs.writeFileSync(
+          path.join(repoPath, 'SKILL.md'),
+          '---\nname: my-skill\ndescription: A skill\n---\n# my-skill\n',
+        );
+      } else if (structure === 'multi') {
+        // Parent dir with child skills (no root SKILL.md)
+        const skillsDir = path.join(repoPath, 'skills');
+        fs.mkdirSync(skillsDir, { recursive: true });
+        for (const name of ['alpha', 'beta']) {
+          const dir = path.join(skillsDir, name);
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(
+            path.join(dir, 'SKILL.md'),
+            `---\nname: ${name}\ndescription: ${name} skill\n---\n# ${name}\n`,
+          );
+        }
+      } else {
+        // Empty repo — no SKILL.md at all
+        fs.writeFileSync(path.join(repoPath, 'README.md'), '# Empty');
+      }
+
+      execSync('git init -b main', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git config user.email "test@test.com"', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git config user.name "Test"', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git add -A', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git commit -m "init"', { cwd: repoPath, stdio: 'pipe' });
+
+      return `file://${repoPath}`;
+    }
+
+    beforeEach(() => {
+      repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-detect-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(repoDir, { recursive: true, force: true });
+    });
+
+    it('should return single for a repo with root SKILL.md', async () => {
+      const fileUrl = createLocalRepo('single');
+      const result = await skillManager.detectSkillsInRef(fileUrl);
+      expect(result.type).toBe('single');
+    });
+
+    it('should return multi with discovered skills for a parent directory', async () => {
+      const fileUrl = createLocalRepo('multi');
+      const result = await skillManager.detectSkillsInRef(fileUrl);
+      expect(result.type).toBe('multi');
+      if (result.type !== 'multi') throw new Error('expected multi');
+      const names = result.skills.map((s) => s.name).sort();
+      expect(names).toEqual(['alpha', 'beta']);
+    });
+
+    it('should fall back to single when repo has no SKILL.md at all (caller handles error)', async () => {
+      // When no skills exist anywhere, detectSkillsInRef returns 'single' so
+      // the caller proceeds to installToAgents, which produces a clear error.
+      const fileUrl = createLocalRepo('empty');
+      const result = await skillManager.detectSkillsInRef(fileUrl);
+      expect(result.type).toBe('single');
+    });
+
+    it('should return single for registry refs', async () => {
+      const result = await skillManager.detectSkillsInRef('@scope/name');
+      expect(result.type).toBe('single');
+    });
+
+    it('should return single for HTTP refs', async () => {
+      const result = await skillManager.detectSkillsInRef('https://example.com/skill.tar.gz');
+      expect(result.type).toBe('single');
+    });
+  });
 });
 
 // Bug fix tests - These tests reproduce bugs before fixing them

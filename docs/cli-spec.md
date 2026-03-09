@@ -203,6 +203,8 @@ Skill discovery scans the cached repo for `SKILL.md` files (priority dirs: `skil
 | Single ref + `--list` | List discovered skill names (no install) | `0` |
 | Single ref + `--skill` but no match | Error, list available skill names | `1` |
 | Single ref + `--skill`, repo has no SKILL.md | Error: no valid skills found | `1` |
+| Single ref pointing to dir **without** root SKILL.md but **with** child skills | Auto-detect multi-skill directory; prompt confirmation (skip with `-y`); install all child skills flat | `0` |
+| Single ref pointing to dir without root SKILL.md and no child skills | Error: no valid skills found | `1` |
 
 ### Skill Reference Formats
 

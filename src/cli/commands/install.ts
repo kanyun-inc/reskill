@@ -433,6 +433,29 @@ async function installSingleSkill(
   const skill = skills[0];
   const cwd = process.cwd();
 
+  const skillManager = new SkillManager(undefined, { global: installGlobally });
+
+  // Detect whether the ref points to a multi-skill directory
+  spinner.start('Resolving skill...');
+  const detection = await skillManager.detectSkillsInRef(skill);
+  spinner.stop('Resolved');
+
+  if (detection.type === 'multi') {
+    await installAutoDetectedMultiSkill(
+      skill,
+      detection.skills,
+      ctx,
+      skillManager,
+      targetAgents,
+      installGlobally,
+      installMode,
+      spinner,
+    );
+    return;
+  }
+
+  // --- Single skill path (existing behaviour) ---
+
   // Show installation summary
   const summaryLines = [
     chalk.cyan(skill),
@@ -453,7 +476,6 @@ async function installSingleSkill(
   // Execute installation
   spinner.start(`Installing ${skill}...`);
 
-  const skillManager = new SkillManager(undefined, { global: installGlobally });
   const { skill: installed, results } = await skillManager.installToAgents(skill, targetAgents, {
     force: options.force,
     save: options.save !== false && !installGlobally,
@@ -473,6 +495,89 @@ async function installSingleSkill(
   // Save installation defaults (only for project installs with success)
   if (!installGlobally && successful.length > 0 && configLoader.exists()) {
     configLoader.reload(); // Sync with SkillManager's changes
+    configLoader.updateDefaults({ targetAgents, installMode });
+  }
+}
+
+/**
+ * Handle auto-detected multi-skill directory: show summary, confirm, install all.
+ *
+ * Called when `detectSkillsInRef` discovers that the ref points to a parent
+ * directory (no SKILL.md at root) containing multiple child skills.
+ */
+async function installAutoDetectedMultiSkill(
+  ref: string,
+  discoveredSkills: { name: string; description?: string }[],
+  ctx: InstallContext,
+  skillManager: SkillManager,
+  targetAgents: AgentType[],
+  installGlobally: boolean,
+  installMode: InstallMode,
+  spinner: ReturnType<typeof p.spinner>,
+): Promise<void> {
+  const { options, configLoader, skipConfirm } = ctx;
+  const skillNames = discoveredSkills.map((s) => s.name);
+
+  // Show discovered skills
+  p.log.step(chalk.bold(`Found ${discoveredSkills.length} skill(s)`));
+  for (const s of discoveredSkills) {
+    p.log.message(`  ${chalk.cyan(s.name)}${s.description ? `  ${chalk.dim(s.description)}` : ''}`);
+  }
+  p.log.message('');
+
+  // Show installation summary
+  const summaryLines = [
+    chalk.cyan(ref),
+    `  ${chalk.dim('→')} ${formatAgentNames(targetAgents)}`,
+    `  ${chalk.dim('Skills:')} ${chalk.cyan(skillNames.join(', '))}`,
+    `  ${chalk.dim('Scope:')} ${installGlobally ? 'Global' : 'Project'}${chalk.dim(', Mode:')} ${installMode}`,
+  ];
+  p.note(summaryLines.join('\n'), 'Multi-Skill Install');
+
+  // Confirm
+  if (!skipConfirm) {
+    const confirmed = await p.confirm({ message: 'Install all discovered skills?' });
+    if (p.isCancel(confirmed) || !confirmed) {
+      p.cancel('Installation cancelled');
+      process.exit(0);
+    }
+  }
+
+  // Install all discovered skills (empty skillNames = install all)
+  spinner.start('Installing skills...');
+  const result = await skillManager.installSkillsFromRepo(ref, [], targetAgents, {
+    force: options.force,
+    save: options.save !== false && !installGlobally,
+    mode: installMode,
+    registry: options.registry,
+    token: options.token,
+  });
+  spinner.stop('Installation complete');
+
+  if (result.listOnly) return;
+  const { installed, skipped } = result;
+
+  // Display results
+  if (installed.length === 0 && skipped.length > 0) {
+    const skipLines = skipped.map((s) => `  ${chalk.dim('–')} ${s.name}: ${chalk.dim(s.reason)}`);
+    p.note(skipLines.join('\n'), chalk.yellow('All skills were already installed'));
+    p.log.info('Use --force to reinstall.');
+    return;
+  }
+
+  const resultLines = installed.map(
+    (r) => `  ${chalk.green('✓')} ${r.skill.name}@${r.skill.version}`,
+  );
+  if (skipped.length > 0) {
+    for (const s of skipped) {
+      resultLines.push(`  ${chalk.dim('–')} ${s.name}: ${chalk.dim(s.reason)}`);
+    }
+  }
+  p.note(resultLines.join('\n'), chalk.green(`Installed ${installed.length} skill(s)`));
+
+  // Save installation defaults
+  if (!installGlobally && installed.length > 0 && configLoader.exists()) {
+    configLoader.reload();
     configLoader.updateDefaults({ targetAgents, installMode });
   }
 }
