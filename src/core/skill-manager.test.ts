@@ -650,6 +650,49 @@ description: ${s.description}
       const result = await skillManager.detectSkillsInRef('https://example.com/skill.tar.gz');
       expect(result.type).toBe('single');
     });
+
+    it('should scope discovery to subPath when ref has subPath (e.g. repo.git/subdir)', async () => {
+      // Create a repo with skills in different directories:
+      //   subdir/skills/alpha/SKILL.md  (inside subPath)
+      //   other/SKILL.md               (outside subPath, should NOT be discovered)
+      const repoPath = path.join(repoDir, 'subpath-test.git');
+      fs.mkdirSync(repoPath, { recursive: true });
+
+      // Skill inside subPath
+      const alphaDir = path.join(repoPath, 'subdir', 'skills', 'alpha');
+      fs.mkdirSync(alphaDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(alphaDir, 'SKILL.md'),
+        '---\nname: alpha\ndescription: Alpha skill\n---\n# alpha\n',
+      );
+
+      // Skill outside subPath — must NOT appear in results
+      const otherDir = path.join(repoPath, 'other');
+      fs.mkdirSync(otherDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(otherDir, 'SKILL.md'),
+        '---\nname: other\ndescription: Other skill\n---\n# other\n',
+      );
+
+      execSync('git init -b main', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git config user.email "test@test.com"', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git config user.name "Test"', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git add -A', { cwd: repoPath, stdio: 'pipe' });
+      execSync('git commit -m "init"', { cwd: repoPath, stdio: 'pipe' });
+
+      // file:///…/subpath-test.git/subdir → parsed.subPath = 'subdir'
+      // CacheManager.cache() copies only the subdir/ content, so discovery
+      // is scoped to subdir/ and the 'other' skill should not appear.
+      const fileUrl = `file://${repoPath}/subdir`;
+      const result = await skillManager.detectSkillsInRef(fileUrl);
+
+      expect(result.type).toBe('multi');
+      if (result.type !== 'multi') throw new Error('expected multi');
+      const names = result.skills.map((s) => s.name).sort();
+      expect(names).toEqual(['alpha']);
+      // 'other' should NOT be in the results — it's outside subPath
+      expect(names).not.toContain('other');
+    });
   });
 });
 

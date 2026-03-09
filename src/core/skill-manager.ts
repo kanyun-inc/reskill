@@ -900,10 +900,9 @@ export class SkillManager {
     const { parsed } = resolved;
     const gitRef = resolved.ref;
 
-    // Ensure the repo is cached
-    let cacheResult = await this.cache.get(parsed, gitRef);
-    if (!cacheResult) {
-      cacheResult = await this.cache.cache(resolved.repoUrl, parsed, gitRef, gitRef);
+    // Ensure the repo is cached (result unused — we only need the side-effect)
+    if (!(await this.cache.get(parsed, gitRef))) {
+      await this.cache.cache(resolved.repoUrl, parsed, gitRef, gitRef);
     }
 
     const cachePath = this.cache.getCachePath(parsed, gitRef);
@@ -918,7 +917,14 @@ export class SkillManager {
     }
 
     // No SKILL.md at root — check for child skills.
-    // Use cachePath (not sourcePath) to match installSkillsFromRepo's scan scope.
+    // cachePath is correct here (not sourcePath) for two reasons:
+    // 1. When parsed.skillName is set, resolveSourcePath() either returns a
+    //    subdirectory (→ metadata found → already returned 'single' above) or
+    //    throws (skill not found). So we never reach this line with
+    //    sourcePath ≠ cachePath.
+    // 2. When parsed.subPath is set, CacheManager.cache() already copies only
+    //    the subPath subdirectory into cachePath, so discovery is scoped to
+    //    the intended directory automatically.
     const discovered = discoverSkillsInDir(cachePath);
     if (discovered.length > 0) {
       return { type: 'multi', skills: discovered };
