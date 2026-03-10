@@ -10,7 +10,7 @@ import { AuthManager } from '../../core/auth-manager.js';
 import { ConfigLoader, DEFAULT_REGISTRIES } from '../../core/config-loader.js';
 import { GitResolver } from '../../core/git-resolver.js';
 import { HttpResolver } from '../../core/http-resolver.js';
-import { LockManager } from '../../core/lock-manager.js';
+import { LOCKFILE_VERSION, LockManager } from '../../core/lock-manager.js';
 import { SkillManager } from '../../core/skill-manager.js';
 import { logger } from '../../utils/logger.js';
 import { checkForUpdate } from '../../utils/update-notifier.js';
@@ -792,7 +792,7 @@ export function checkSkillsLock(cwd: string): CheckResult {
   // Check lockfile version compatibility before sync check
   // If version is unsupported, sync results would be meaningless
   const lockData = lockManager.load();
-  if (lockData.lockfileVersion !== 1) {
+  if (lockData.lockfileVersion !== LOCKFILE_VERSION) {
     return {
       name: 'skills.lock',
       status: 'warn',
@@ -982,12 +982,6 @@ export async function checkDetectedAgents(): Promise<CheckResult> {
 }
 
 /**
- * Get custom registry URLs for network checks
- *
- * Reads registries from skills.json and publishRegistry,
- * excluding built-in github.com/gitlab.com and deduplicating.
- */
-/**
  * Normalize a URL to its origin for comparison.
  * Handles trailing slashes and case differences (e.g., GITHUB.COM → github.com).
  */
@@ -999,6 +993,12 @@ function normalizeUrlOrigin(url: string): string {
   }
 }
 
+/**
+ * Get custom registry URLs for network checks
+ *
+ * Reads registries from skills.json and publishRegistry,
+ * excluding built-in github.com/gitlab.com and deduplicating.
+ */
 export function getCustomRegistryUrls(cwd: string): string[] {
   const urls = new Set<string>();
   const builtinOrigins = new Set(

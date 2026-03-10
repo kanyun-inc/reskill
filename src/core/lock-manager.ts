@@ -4,7 +4,7 @@ import { exists, getSkillsLockPath, readJson, writeJson } from '../utils/fs.js';
 /**
  * Current lockfile version
  */
-const LOCKFILE_VERSION = 1;
+export const LOCKFILE_VERSION = 1;
 
 /**
  * LockManager - Manage skills.lock file
