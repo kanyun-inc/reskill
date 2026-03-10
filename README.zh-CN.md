@@ -1,3 +1,5 @@
+<!-- source: README.md -->
+<!-- synced: 2026-02-12 -->
 <div align="center">
 
 <img src="https://raw.githubusercontent.com/kanyun-ai-infra/reskill/main/logov2.png" alt="reskill" height="48" />

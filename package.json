@@ -25,6 +25,7 @@
   "scripts": {
     "dev": "rslib build --watch",
     "build": "rslib build",
+    "check:readme-sync": "node scripts/check-readme-sync.mjs",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
