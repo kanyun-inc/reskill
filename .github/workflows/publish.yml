@@ -57,11 +57,13 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'kanyun-inc/reskill' && startsWith(github.ref, 'refs/heads/feature-')
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -99,17 +101,40 @@ jobs:
         if: steps.check-pre.outputs.is_pre == 'true'
         run: pnpm changeset version
 
-      - name: Run tests
+      - name: Check for version changes
         if: steps.check-pre.outputs.is_pre == 'true'
+        id: check-version
+        run: |
+          if git diff --quiet package.json; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "::notice::No version changes detected. Package may already be at this version."
+          else
+            NEW_VERSION=$(node -e "console.log(require('./package.json').version)")
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "::notice::Version bumped to $NEW_VERSION"
+          fi
+
+      - name: Run tests
+        if: steps.check-pre.outputs.is_pre == 'true' && steps.check-version.outputs.has_changes == 'true'
         run: pnpm test:run
 
       - name: Build
-        if: steps.check-pre.outputs.is_pre == 'true'
+        if: steps.check-pre.outputs.is_pre == 'true' && steps.check-version.outputs.has_changes == 'true'
         run: pnpm build
 
       - name: Publish beta to npm
-        if: steps.check-pre.outputs.is_pre == 'true'
+        if: steps.check-pre.outputs.is_pre == 'true' && steps.check-version.outputs.has_changes == 'true'
         run: pnpm changeset publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+
+      - name: Commit version bump back to branch
+        if: steps.check-pre.outputs.is_pre == 'true' && steps.check-version.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json CHANGELOG.md .changeset/pre.json
+          git commit -m "chore: release beta ${{ steps.check-version.outputs.new_version }} [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
