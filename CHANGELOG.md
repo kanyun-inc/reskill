@@ -1,5 +1,15 @@
 # reskill
 
+## 1.16.0-beta.1
+
+### Patch Changes
+
+- 582fc8b: Fix beta release CI to commit version bump back to branch
+
+  ***
+
+  修复 beta 发版 CI，将版本号变更提交回分支
+
 ## 1.16.0-beta.0
 
 ### Minor Changes

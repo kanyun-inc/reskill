@@ -6,6 +6,7 @@
   },
   "changesets": [
     "chinese-pattern-detection",
-    "content-scanner"
+    "content-scanner",
+    "fix-beta-ci"
   ]
 }
