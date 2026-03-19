@@ -10,6 +10,7 @@ import {
   completionCommand,
   doctorCommand,
   findCommand,
+  groupCommand,
   infoCommand,
   initCommand,
   installCommand,
@@ -53,6 +54,7 @@ program.addCommand(publishCommand);
 program.addCommand(loginCommand);
 program.addCommand(logoutCommand);
 program.addCommand(whoamiCommand);
+program.addCommand(groupCommand);
 program.addCommand(completionCommand);
 program.addCommand(doctorCommand);
 

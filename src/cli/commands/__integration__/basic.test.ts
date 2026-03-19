@@ -40,6 +40,23 @@ describe('CLI Integration: Version & Help', () => {
     expect(stdout).toContain('update');
     expect(stdout).toContain('info');
     expect(stdout).toContain('outdated');
+    expect(stdout).toContain('group');
+  });
+
+  it('should show help for group command', () => {
+    const { stdout, exitCode } = runCli('group --help');
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('Manage skill groups');
+    expect(stdout).toContain('list [options]');
+    expect(stdout).toContain('create [options] <name>');
+    expect(stdout).toContain('info [options] <path>');
+    expect(stdout).toContain('delete [options] <path>');
+  });
+
+  it('should show --tree option in group list help', () => {
+    const { stdout, exitCode } = runCli('group list --help');
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('--tree');
   });
 });
 

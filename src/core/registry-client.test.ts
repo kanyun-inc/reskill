@@ -1426,4 +1426,282 @@ describe('RegistryClient', () => {
       expect(integrity1).not.toBe(integrity2);
     });
   });
+
+  // ============================================================================
+  // Group API tests
+  // ============================================================================
+
+  describe('resolveGroup', () => {
+    it('should resolve a group by path', async () => {
+      const mockGroup = {
+        id: 'g1',
+        name: 'Frontend',
+        slug: 'frontend',
+        path: 'kanyun/frontend',
+        visibility: 'public',
+        level: 2,
+        current_user_role: 'owner',
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: mockGroup }),
+      });
+
+      const result = await client.resolveGroup('kanyun/frontend');
+
+      expect(result).toEqual(mockGroup);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups/resolve?path=kanyun%2Ffrontend`,
+        expect.objectContaining({ method: 'GET' }),
+      );
+    });
+
+    it('should throw RegistryError when group not found', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ error: 'Group not found' }),
+      });
+
+      await expect(client.resolveGroup('nonexistent')).rejects.toThrow(RegistryError);
+    });
+  });
+
+  describe('listGroups', () => {
+    it('should list groups without filters', async () => {
+      const mockGroups = [
+        { id: 'g1', name: 'Kanyun', slug: 'kanyun', path: 'kanyun', visibility: 'public', level: 1 },
+      ];
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: mockGroups }),
+      });
+
+      const result = await client.listGroups();
+
+      expect(result).toEqual(mockGroups);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups`,
+        expect.objectContaining({ method: 'GET' }),
+      );
+    });
+
+    it('should pass filter parameters', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+
+      await client.listGroups({ parentId: 'p1', visibility: 'private' });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('parent_id=p1'),
+        expect.any(Object),
+      );
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('visibility=private'),
+        expect.any(Object),
+      );
+    });
+
+    it('should pass flat=true query parameter', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+
+      await client.listGroups({ flat: true });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('flat=true'),
+        expect.any(Object),
+      );
+    });
+  });
+
+  describe('createGroup', () => {
+    it('should create a group', async () => {
+      const mockGroup = {
+        id: 'g-new',
+        name: 'React',
+        slug: 'react',
+        path: 'kanyun/react',
+        visibility: 'public',
+        level: 2,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: mockGroup }),
+      });
+
+      const result = await client.createGroup({
+        name: 'React',
+        slug: 'react',
+        visibility: 'public',
+      });
+
+      expect(result).toEqual(mockGroup);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups`,
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"name":"React"'),
+        }),
+      );
+    });
+
+    it('should throw on failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({ error: 'Slug already exists' }),
+      });
+
+      await expect(
+        client.createGroup({ name: 'React', slug: 'react' }),
+      ).rejects.toThrow(RegistryError);
+    });
+  });
+
+  describe('deleteGroup', () => {
+    it('should delete a group', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: { deleted: true } }),
+      });
+
+      const result = await client.deleteGroup('g1');
+
+      expect(result).toEqual({ deleted: true });
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups/g1`,
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+
+    it('should support dry-run mode', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: { affected_skills: 5 } }),
+      });
+
+      const result = await client.deleteGroup('g1', true);
+
+      expect(result).toEqual({ affected_skills: 5 });
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups/g1?dry_run=true`,
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+  });
+
+  describe('listGroupMembers', () => {
+    it('should list group members', async () => {
+      const mockMembers = [
+        { user_id: 'u1', handle: 'alice', role: 'owner' },
+        { user_id: 'u2', handle: 'bob', role: 'developer' },
+      ];
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: mockMembers }),
+      });
+
+      const result = await client.listGroupMembers('g1');
+
+      expect(result).toEqual(mockMembers);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups/g1/members`,
+        expect.objectContaining({ method: 'GET' }),
+      );
+    });
+  });
+
+  describe('addGroupMembers', () => {
+    it('should add members with default role', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: {} }),
+      });
+
+      await client.addGroupMembers('g1', ['u1', 'u2']);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups/g1/members`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ user_ids: ['u1', 'u2'], role: 'developer' }),
+        }),
+      );
+    });
+
+    it('should add members with specified role', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: {} }),
+      });
+
+      await client.addGroupMembers('g1', ['u1'], 'maintainer');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups/g1/members`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ user_ids: ['u1'], role: 'maintainer' }),
+        }),
+      );
+    });
+  });
+
+  describe('removeGroupMember', () => {
+    it('should remove a member', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: {} }),
+      });
+
+      await client.removeGroupMember('g1', 'u1');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups/g1/members?user_id=u1`,
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+
+    it('should URL-encode user id in query string', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: {} }),
+      });
+
+      await client.removeGroupMember('g1', 'alice+bob@example.com');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups/g1/members?user_id=alice%2Bbob%40example.com`,
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+  });
+
+  describe('updateGroupMemberRole', () => {
+    it('should update member role', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: {} }),
+      });
+
+      await client.updateGroupMemberRole('g1', 'u1', 'maintainer');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${testRegistry}/api/skill-groups/g1/members`,
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ user_id: 'u1', role: 'maintainer' }),
+        }),
+      );
+    });
+  });
 });

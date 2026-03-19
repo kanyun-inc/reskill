@@ -9,7 +9,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { pack } from 'tar-stream';
-import type { SkillInfo } from '../types/index.js';
+import type { GroupDetail, GroupMember, GroupRole, SkillGroup, SkillInfo } from '../types/index.js';
 import { getShortName } from '../utils/registry-scope.js';
 import type { PublishPayload } from './publisher.js';
 
@@ -557,7 +557,7 @@ export class RegistryClient {
     skillName: string,
     payload: PublishPayload,
     skillPath: string,
-    options: { tag?: string } = {},
+    options: { tag?: string; groupPath?: string } = {},
   ): Promise<PublishResponse> {
     const url = `${this.getApiBase()}/skills/publish`;
 
@@ -600,6 +600,10 @@ export class RegistryClient {
       formData.append('tag', options.tag);
     }
 
+    if (options.groupPath) {
+      formData.append('group_path', options.groupPath);
+    }
+
     // Append tarball as Blob
     const tarballBlob = new Blob([tarball], { type: 'application/gzip' });
     formData.append('tarball', tarballBlob, `${skillName.replace('/', '-')}.tgz`);
@@ -622,6 +626,263 @@ export class RegistryClient {
     }
 
     return data;
+  }
+
+  // ============================================================================
+  // Group Methods
+  // ============================================================================
+
+  /**
+   * Resolve a human-readable group path to its details.
+   *
+   * @param groupPath - Human-readable path (e.g., "kanyun/frontend")
+   * @returns Group detail with current_user_role if authenticated
+   * @throws RegistryError if not found or request failed
+   */
+  async resolveGroup(groupPath: string): Promise<GroupDetail> {
+    const params = new URLSearchParams({ path: groupPath });
+    const url = `${this.getApiBase()}/skill-groups/resolve?${params.toString()}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      throw new RegistryError(
+        data.error || `Group not found: ${groupPath}`,
+        response.status,
+        data,
+      );
+    }
+
+    const body = (await response.json()) as { data: GroupDetail };
+    return body.data;
+  }
+
+  /**
+   * List groups visible to the current user.
+   *
+   * @param options - Filter options (parent_id, visibility)
+   * @returns Array of groups
+   */
+  async listGroups(
+    options: { parentId?: string; visibility?: string; flat?: boolean } = {},
+  ): Promise<SkillGroup[]> {
+    const params = new URLSearchParams();
+    if (options.parentId) params.set('parent_id', options.parentId);
+    if (options.visibility) params.set('visibility', options.visibility);
+    if (options.flat) params.set('flat', 'true');
+
+    const qs = params.toString();
+    const url = `${this.getApiBase()}/skill-groups${qs ? `?${qs}` : ''}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      throw new RegistryError(
+        data.error || `Failed to list groups: ${response.status}`,
+        response.status,
+        data,
+      );
+    }
+
+    const body = (await response.json()) as { data: SkillGroup[] };
+    return body.data;
+  }
+
+  /**
+   * Create a new skill group.
+   *
+   * @param input - Group creation parameters
+   * @returns Created group
+   */
+  async createGroup(input: {
+    name: string;
+    slug: string;
+    description?: string;
+    visibility?: string;
+    parent_id?: string;
+  }): Promise<SkillGroup> {
+    const url = `${this.getApiBase()}/skill-groups`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...this.getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      throw new RegistryError(
+        data.error || `Failed to create group: ${response.status}`,
+        response.status,
+        data,
+      );
+    }
+
+    const body = (await response.json()) as { data: SkillGroup };
+    return body.data;
+  }
+
+  /**
+   * Delete a skill group.
+   *
+   * @param groupId - Group UUID
+   * @param dryRun - If true, only preview what would be deleted
+   * @returns Deletion result (affected skills count in dry-run mode)
+   */
+  async deleteGroup(
+    groupId: string,
+    dryRun = false,
+  ): Promise<{ deleted?: boolean; affected_skills?: number }> {
+    const params = dryRun ? '?dry_run=true' : '';
+    const url = `${this.getApiBase()}/skill-groups/${groupId}${params}`;
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      throw new RegistryError(
+        data.error || `Failed to delete group: ${response.status}`,
+        response.status,
+        data,
+      );
+    }
+
+    const body = (await response.json()) as {
+      data: { deleted?: boolean; affected_skills?: number };
+    };
+    return body.data;
+  }
+
+  /**
+   * List members of a group.
+   *
+   * @param groupId - Group UUID
+   * @returns Array of members
+   */
+  async listGroupMembers(groupId: string): Promise<GroupMember[]> {
+    const url = `${this.getApiBase()}/skill-groups/${groupId}/members`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      throw new RegistryError(
+        data.error || `Failed to list members: ${response.status}`,
+        response.status,
+        data,
+      );
+    }
+
+    const body = (await response.json()) as { data: GroupMember[] };
+    return body.data;
+  }
+
+  /**
+   * Add members to a group.
+   *
+   * @param groupId - Group UUID
+   * @param userIds - Array of user IDs to add
+   * @param role - Role to assign (defaults to 'developer')
+   */
+  async addGroupMembers(
+    groupId: string,
+    userIds: string[],
+    role: GroupRole = 'developer',
+  ): Promise<void> {
+    const url = `${this.getApiBase()}/skill-groups/${groupId}/members`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...this.getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_ids: userIds, role }),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      throw new RegistryError(
+        data.error || `Failed to add members: ${response.status}`,
+        response.status,
+        data,
+      );
+    }
+  }
+
+  /**
+   * Remove a member from a group.
+   *
+   * @param groupId - Group UUID
+   * @param userId - User ID to remove
+   */
+  async removeGroupMember(groupId: string, userId: string): Promise<void> {
+    const params = new URLSearchParams({ user_id: userId });
+    const url = `${this.getApiBase()}/skill-groups/${groupId}/members?${params.toString()}`;
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      throw new RegistryError(
+        data.error || `Failed to remove member: ${response.status}`,
+        response.status,
+        data,
+      );
+    }
+  }
+
+  /**
+   * Update a member's role in a group.
+   *
+   * @param groupId - Group UUID
+   * @param userId - User ID to update
+   * @param role - New role to assign
+   */
+  async updateGroupMemberRole(
+    groupId: string,
+    userId: string,
+    role: GroupRole,
+  ): Promise<void> {
+    const url = `${this.getApiBase()}/skill-groups/${groupId}/members`;
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        ...this.getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId, role }),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      throw new RegistryError(
+        data.error || `Failed to update member role: ${response.status}`,
+        response.status,
+        data,
+      );
+    }
   }
 }
 

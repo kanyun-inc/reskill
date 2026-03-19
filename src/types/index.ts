@@ -319,6 +319,42 @@ export interface ListOptions {
 }
 
 // ============================================================================
+// Group types (for skill group management)
+// ============================================================================
+
+export type GroupRole = 'owner' | 'maintainer' | 'developer';
+
+export type GroupVisibility = 'public' | 'private';
+
+export interface SkillGroup {
+  id: string;
+  name: string;
+  slug: string;
+  path: string;
+  description?: string;
+  visibility: GroupVisibility;
+  parent_id?: string;
+  level: number;
+  skill_count?: number;
+  member_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GroupDetail extends SkillGroup {
+  children?: SkillGroup[];
+  current_user_role?: GroupRole;
+}
+
+export interface GroupMember {
+  user_id: string;
+  handle: string;
+  email?: string;
+  role: GroupRole;
+  joined_at?: string;
+}
+
+// ============================================================================
 // Registry API types (for web-published skill support)
 // ============================================================================
 

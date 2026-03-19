@@ -37,6 +37,7 @@ interface PublishOptions {
   access?: 'public' | 'restricted';
   dryRun?: boolean;
   yes?: boolean;
+  group?: string;
 }
 
 // ============================================================================
@@ -580,6 +581,12 @@ async function publishAction(skillPath: string, options: PublishOptions): Promis
     // Display metadata
     displayMetadata(skill);
 
+    // Display group info
+    if (options.group) {
+      logger.newline();
+      logger.log(`Group: ${options.group}`);
+    }
+
     // 8. Dry run mode ends here
     if (options.dryRun && payload) {
       displayDryRunSummary(payload);
@@ -628,7 +635,10 @@ async function publishAction(skillPath: string, options: PublishOptions): Promis
         process.exit(1);
       }
 
-      const result = await client.publish(skillName, payload, absolutePath, { tag: options.tag });
+      const result = await client.publish(skillName, payload, absolutePath, {
+        tag: options.tag,
+        groupPath: options.group,
+      });
 
       if (!result.success || !result.data) {
         logger.error(result.error || 'Publish failed');
@@ -682,6 +692,7 @@ export const publishCommand = new Command('publish')
   .option('--access <level>', 'Access level: public or restricted', 'public')
   .option('-n, --dry-run', 'Validate without publishing')
   .option('-y, --yes', 'Skip confirmation prompts')
+  .option('-g, --group <path>', 'Publish skill into a group (e.g., "kanyun/frontend")')
   .action(publishAction);
 
 export default publishCommand;
