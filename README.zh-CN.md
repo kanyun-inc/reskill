@@ -46,40 +46,66 @@ npx reskill@latest <command>  # 或直接使用 npx
 | 命令                  | 别名                 | 说明                      |
 | --------------------- | -------------------- | ------------------------- |
 | `init`                | -                    | 初始化 `skills.json`      |
-| `find <query>`        | -                    | 在 registry 中搜索 skills |
+| `find <query>`        | `search`             | 在 registry 中搜索 skills |
 | `install [skills...]` | `i`                  | 安装一个或多个 skills     |
 | `list`                | `ls`                 | 列出已安装的 skills       |
 | `info <skill>`        | -                    | 查看 skill 详情           |
 | `update [skill]`      | `up`                 | 更新 skills               |
 | `outdated`            | -                    | 检查过期的 skills         |
 | `uninstall <skill>`   | `un`, `rm`, `remove` | 卸载 skill                |
+| `group`               | -                    | 管理 skill 分组 ¹         |
 | `publish [path]`      | `pub`                | 发布 skill 到 registry ¹  |
 | `login`               | -                    | 登录 registry ¹           |
 | `logout`              | -                    | 登出 registry ¹           |
 | `whoami`              | -                    | 显示当前登录用户 ¹        |
 | `doctor`              | -                    | 诊断环境并检查问题        |
-| `completion install`  | -                    | 安装 Shell Tab 补全       |
+| `completion [action]` | -                    | 配置或移除 Shell Tab 补全 |
 
-> ¹ Registry 相关命令（`publish`、`login`、`logout`、`whoami`）需要部署私有 registry 后才能使用，暂不对外开放。
+> ¹ Registry 相关命令（`group`、`publish`、`login`、`logout`、`whoami`）需要部署私有 registry 后才能使用，暂不对外开放。
 
 ### 常用选项
 
-| 选项                      | 适用命令                             | 说明                                         |
-| ------------------------- | ------------------------------------ | -------------------------------------------- |
-| `--no-save`               | `install`                            | 安装时不保存到 `skills.json`（用于个人技能） |
-| `-g, --global`            | `install`, `uninstall`, `list`       | 全局安装/管理技能（用户目录）                |
-| `-a, --agent <agents...>` | `install`                            | 指定目标 Agent（如 `cursor`, `claude-code`） |
-| `--mode <mode>`           | `install`                            | 安装模式：`symlink`（默认）或 `copy`         |
-| `--all`                   | `install`                            | 安装到所有 Agent                             |
-| `-y, --yes`               | `install`, `uninstall`, `publish`    | 跳过确认提示                                 |
-| `-f, --force`             | `install`                            | 强制重新安装                                 |
-| `-s, --skill <names...>`  | `install`                            | 从多 skill 仓库中选择指定 skill              |
-| `--list`                  | `install`                            | 列出仓库中可用的 skills（不安装）            |
-| `-r, --registry <url>`    | `install`, `publish`                 | 覆盖 registry URL（用于 registry 安装）      |
-| `-t, --token <token>`     | `install`                            | 认证令牌（用于 CI/CD 访问私有 skill）        |
-| `-j, --json`              | `list`, `info`, `outdated`, `doctor` | JSON 格式输出                                |
+| 选项                      | 适用命令                                      | 说明                                         |
+| ------------------------- | --------------------------------------------- | -------------------------------------------- |
+| `--no-save`               | `install`                                     | 安装时不保存到 `skills.json`（用于个人技能） |
+| `-g, --global`            | `install`, `uninstall`, `list`                | 全局安装/管理技能（用户目录）                |
+| `-a, --agent <agents...>` | `install`                                     | 指定目标 Agent（如 `cursor`, `claude-code`） |
+| `--mode <mode>`           | `install`                                     | 安装模式：`symlink`（默认）或 `copy`         |
+| `--all`                   | `install`                                     | 安装到所有 Agent                             |
+| `-y, --yes`               | `install`, `uninstall`, `publish`             | 跳过确认提示                                 |
+| `-f, --force`             | `install`                                     | 强制重新安装                                 |
+| `-s, --skill <names...>`  | `install`                                     | 从多 skill 仓库中选择指定 skill              |
+| `--list`                  | `install`                                     | 列出仓库中可用的 skills（不安装）            |
+| `-t, --token <token>`     | `install`                                     | 认证令牌（用于 CI/CD 访问私有 skill）        |
+| `-r, --registry <url>`    | `install`, `group`, `publish`                 | 覆盖 registry URL（用于 registry 相关命令）  |
+| `-j, --json`              | `list`, `info`, `outdated`, `doctor`, `group` | JSON 格式输出                                |
+| `-l, --limit <n>`         | `find`                                        | 限制搜索结果数量                             |
+| `--skip-network`          | `doctor`                                      | 跳过网络连通性检查                           |
 
 运行 `reskill <command> --help` 查看完整选项和详细用法。
+
+### Group 命令速查
+
+```bash
+# 查看分组
+reskill group list
+reskill group list --tree
+
+# 创建 / 查看 / 删除分组
+reskill group create "Frontend Team" --description "Frontend skills"
+reskill group info kanyun/frontend
+reskill group delete kanyun/frontend --dry-run
+reskill group delete kanyun/frontend -y
+
+# 成员管理
+reskill group member list kanyun/frontend
+reskill group member add kanyun/frontend alice bob --role developer
+reskill group member remove kanyun/frontend alice
+reskill group member role kanyun/frontend bob maintainer
+```
+
+`publish --group <path>` 在请求前会先做路径归一化和校验。  
+完整规则见 [CLI 规范 - group](./docs/cli-spec.md#group)。
 
 ## 源格式
 
@@ -212,11 +238,24 @@ Skills 默认安装到 `.skills/`，可与任何 Agent 集成：
 将你的 skills 发布到 registry 供他人使用：
 
 ```bash
-# 登录 registry
+# Group 管理示例
+reskill group list
+reskill group list --tree
+reskill group create "Frontend Team" --description "Frontend skills"
+reskill group info kanyun/frontend
+reskill group member add kanyun/frontend alice bob --role developer
+
+# 交互式登录（推荐日常使用）
 reskill login
+
+# 非交互式登录（CI/CD）
+reskill login --token <your-token>
 
 # 验证但不发布（预览模式）
 reskill publish --dry-run
+
+# 验证并指定目标分组
+reskill publish --dry-run --group kanyun/frontend
 
 # 发布 skill
 reskill publish
@@ -247,7 +286,10 @@ reskill install @scope/private-skill --registry https://your-registry.com --toke
 | `RESKILL_TOKEN`     | 认证令牌（优先于 ~/.reskillrc） | -                              |
 | `RESKILL_REGISTRY`  | 默认 registry URL               | `https://registry.reskill.dev` |
 | `DEBUG`             | 启用调试日志                    | -                              |
+| `VERBOSE`           | 启用调试日志（与 `DEBUG` 等效） | -                              |
 | `NO_COLOR`          | 禁用彩色输出                    | -                              |
+
+reskill 会在后台检查新版本，并在命令执行后提示升级信息。
 
 ## 开发
 
