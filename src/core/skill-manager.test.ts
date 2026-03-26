@@ -1216,7 +1216,7 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  describe('页面发布 skill 不支持版本指定', () => {
+  describe('web-published skill version specifier support', () => {
     it('should throw error when version specified for github source_type', async () => {
       // Mock RegistryClient.getSkillInfo 返回 github source_type
       const { RegistryClient } = await import('./registry-client.js');
@@ -1232,7 +1232,7 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
       ).rejects.toThrow('Version specifier not supported for web-published skills');
     });
 
-    it('should throw error when version specified for local source_type', async () => {
+    it('should allow version specifier for local source_type', async () => {
       const { RegistryClient } = await import('./registry-client.js');
       vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
         name: '@kanyun/local-skill',
@@ -1240,9 +1240,59 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
         source_url: 'local/@kanyun/local-skill.tgz',
       });
 
-      await expect(
-        manager.installToAgents('@kanyun/local-skill@2.0.0', ['cursor']),
-      ).rejects.toThrow('Version specifier not supported for web-published skills');
+      // Mock resolveVersion to return the requested version
+      vi.spyOn(RegistryClient.prototype, 'resolveVersion').mockResolvedValue('2.0.0');
+
+      // Mock installFromRegistryLocal
+      const installLocalSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installFromRegistryLocal',
+        )
+        .mockResolvedValue({
+          skill: {
+            name: 'local-skill',
+            path: '/tmp/skill',
+            version: '2.0.0',
+            source: 'registry:@kanyun/local-skill',
+          },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      // local source_type should allow version specifiers
+      await manager.installToAgents('@kanyun/local-skill@2.0.0', ['cursor']);
+
+      expect(installLocalSpy).toHaveBeenCalled();
+    });
+
+    it('should allow latest version for local source_type', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/local-skill',
+        source_type: 'local',
+        source_url: 'local/@kanyun/local-skill.tgz',
+      });
+
+      vi.spyOn(RegistryClient.prototype, 'resolveVersion').mockResolvedValue('1.0.0');
+
+      const installLocalSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installFromRegistryLocal',
+        )
+        .mockResolvedValue({
+          skill: {
+            name: 'local-skill',
+            path: '/tmp/skill',
+            version: '1.0.0',
+            source: 'registry:@kanyun/local-skill',
+          },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      await manager.installToAgents('@kanyun/local-skill@latest', ['cursor']);
+
+      expect(installLocalSpy).toHaveBeenCalled();
     });
 
     it('should allow latest version for web-published skills', async () => {

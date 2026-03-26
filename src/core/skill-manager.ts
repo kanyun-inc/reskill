@@ -1488,7 +1488,7 @@ export class SkillManager {
   /**
    * Install a web-published skill.
    *
-   * Web-published skills do not support versioning. Branches to different
+   * Web-published skills (except local) do not support versioning. Branches to different
    * installation logic based on source_type:
    * - github/gitlab: reuses installToAgentsFromGit
    * - oss_url/custom_url: reuses installToAgentsFromHttp
@@ -1505,8 +1505,8 @@ export class SkillManager {
   }> {
     const { source_type, source_url } = skillInfo;
 
-    // Web-published skills do not support version specifiers
-    if (parsed.version && parsed.version !== 'latest') {
+    // Web-published skills (except local) do not support version specifiers
+    if (source_type !== 'local' && parsed.version && parsed.version !== 'latest') {
       throw new Error(
         `Version specifier not supported for web-published skills.\n` +
           `'${parsed.fullName}' was published via web and does not support versioning.\n` +
@@ -1639,10 +1639,12 @@ export class SkillManager {
     const { save = true, mode = 'symlink' } = options;
     const registryUrl = await this.resolveRegistryUrl(parsed.fullName, options.registry);
     const shortName = getShortName(parsed.fullName);
-    const version = 'latest';
+
+    // Resolve version via dist-tags (supports @latest, @1.0.0, etc.)
+    const client = new RegistryClient({ registry: registryUrl, token: options.token });
+    const version = await client.resolveVersion(parsed.fullName, parsed.version);
 
     // Download tarball via RegistryClient (handles auth + 302 redirect to signed URL)
-    const client = new RegistryClient({ registry: registryUrl, token: options.token });
     const { tarball } = await client.downloadSkill(parsed.fullName, version);
 
     logger.package(
