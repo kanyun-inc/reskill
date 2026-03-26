@@ -44,7 +44,7 @@ async function isRegistryAvailable(): Promise<boolean> {
     const timeoutId = setTimeout(() => controller.abort(), 3000);
 
     const response = await fetch(
-      `${REGISTRY_URL}/api/skills/%40kanyun%2Fplanning-with-files`,
+      `${REGISTRY_URL}/api/skills/${encodeURIComponent(TEST_SKILL)}`,
       {
         method: 'GET',
         signal: controller.signal,
@@ -312,6 +312,101 @@ describe('Install from npm-style Registry', () => {
 
         // 清理
         fs.rmSync(projectDir, { recursive: true, force: true });
+      },
+      { timeout: 30000 },
+    );
+  });
+
+  // ============================================================================
+  // Local source_type version specifier tests (requires registry)
+  // ============================================================================
+
+  describe('Local source_type with version specifier (requires registry)', () => {
+    // @kanyun-test/ppt-generator is a local source_type skill with multiple versions:
+    // - 1.0.0 (initial)
+    // - 1.0.2 (latest)
+    const LOCAL_SKILL = '@kanyun-test/ppt-generator';
+    const LOCAL_SKILL_OLD_VERSION = '1.0.0';
+
+    it(
+      'should resolve specific version for local source_type skill',
+      async () => {
+        if (!registryAvailable) {
+          console.log('Skipping: registry not available');
+          return;
+        }
+        const client = new RegistryClient({ registry: REGISTRY_URL, token: TEST_TOKEN });
+
+        // Resolve a specific version (should return as-is for semver)
+        const resolved = await client.resolveVersion(LOCAL_SKILL, LOCAL_SKILL_OLD_VERSION);
+        expect(resolved).toBe(LOCAL_SKILL_OLD_VERSION);
+      },
+      { timeout: 30000 },
+    );
+
+    it(
+      'should resolve latest tag for local source_type skill',
+      async () => {
+        if (!registryAvailable) {
+          console.log('Skipping: registry not available');
+          return;
+        }
+        const client = new RegistryClient({ registry: REGISTRY_URL, token: TEST_TOKEN });
+
+        // Resolve latest tag — should return a semver version
+        const resolved = await client.resolveVersion(LOCAL_SKILL, 'latest');
+        expect(resolved).toMatch(/^\d+\.\d+\.\d+/);
+        console.log(`✅ Resolved ${LOCAL_SKILL}@latest → ${resolved}`);
+      },
+      { timeout: 30000 },
+    );
+
+    it(
+      'should download specific version tarball for local source_type skill',
+      async () => {
+        if (!registryAvailable) {
+          console.log('Skipping: registry not available');
+          return;
+        }
+        const client = new RegistryClient({ registry: REGISTRY_URL, token: TEST_TOKEN });
+
+        // Download old version tarball
+        const { tarball } = await client.downloadSkill(LOCAL_SKILL, LOCAL_SKILL_OLD_VERSION);
+        expect(tarball).toBeInstanceOf(Buffer);
+        expect(tarball.length).toBeGreaterThan(0);
+        console.log(`✅ Downloaded ${LOCAL_SKILL}@${LOCAL_SKILL_OLD_VERSION} (${tarball.length} bytes)`);
+      },
+      { timeout: 30000 },
+    );
+
+    it(
+      'should download different tarballs for different versions',
+      async () => {
+        if (!registryAvailable) {
+          console.log('Skipping: registry not available');
+          return;
+        }
+        const client = new RegistryClient({ registry: REGISTRY_URL, token: TEST_TOKEN });
+
+        // Resolve latest version
+        const latestVersion = await client.resolveVersion(LOCAL_SKILL, 'latest');
+
+        // Download both versions
+        const { tarball: oldTarball } = await client.downloadSkill(LOCAL_SKILL, LOCAL_SKILL_OLD_VERSION);
+        const { tarball: latestTarball } = await client.downloadSkill(LOCAL_SKILL, latestVersion);
+
+        expect(oldTarball).toBeInstanceOf(Buffer);
+        expect(latestTarball).toBeInstanceOf(Buffer);
+
+        // If versions differ, tarballs should differ (size or content)
+        if (LOCAL_SKILL_OLD_VERSION !== latestVersion) {
+          const isDifferent =
+            oldTarball.length !== latestTarball.length || !oldTarball.equals(latestTarball);
+          expect(isDifferent).toBe(true);
+          console.log(
+            `✅ Verified different tarballs: v${LOCAL_SKILL_OLD_VERSION} (${oldTarball.length}B) vs v${latestVersion} (${latestTarball.length}B)`,
+          );
+        }
       },
       { timeout: 30000 },
     );
