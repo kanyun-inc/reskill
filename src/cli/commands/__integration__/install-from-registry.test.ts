@@ -322,9 +322,10 @@ describe('Install from npm-style Registry', () => {
   // ============================================================================
 
   describe('Local source_type with version specifier (requires registry)', () => {
-    // @kanyun-test/ppt-generator is a local source_type skill with multiple versions:
-    // - 1.0.0 (initial)
-    // - 1.0.2 (latest)
+    // Test dependency: requires @kanyun-test/ppt-generator to exist on the target
+    // registry (REGISTRY_URL) with at least two published versions.
+    // Currently published on https://rush-test.zhenguanyu.com with versions 1.0.0 and 1.0.2.
+    // If this skill is removed or versions change, update the constants below.
     const LOCAL_SKILL = '@kanyun-test/ppt-generator';
     const LOCAL_SKILL_OLD_VERSION = '1.0.0';
 
@@ -446,7 +447,8 @@ describe('Install from npm-style Registry', () => {
         expect(tarball.length).toBeGreaterThan(0);
       } catch (error) {
         // If server rejects, it should throw a meaningful error
-        expect(error).toBeDefined();
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBeTruthy();
       }
     });
 
