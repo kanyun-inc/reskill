@@ -94,10 +94,15 @@ reskill search <query> [options]
 | `-r, --registry <url>` | (see below) | Registry URL; overrides env and config |
 | `-l, --limit <n>` | `10` | Maximum number of results |
 | `-j, --json` | `false` | Output as JSON |
+| `-t, --token <token>` | (see below) | Auth token for registry API requests (for CI/CD) |
 
 ### Registry resolution
 
 Same priority as publish: `--registry` option → `RESKILL_REGISTRY` env → `defaults.publishRegistry` in skills.json. If none is set, falls back to the public registry (no error).
+
+### Token resolution
+
+`--token` flag → `RESKILL_TOKEN` env → `~/.reskillrc` stored config. When provided, the token is sent as `Authorization: Bearer <token>` header, enabling search of private skills.
 
 ### Behavior
 
@@ -564,6 +569,11 @@ reskill pub [path] [options]
 | `-n, --dry-run` | `false` | Validate without publishing |
 | `-y, --yes` | `false` | Skip confirmation prompts |
 | `-g, --group <path>` | - | Publish skill into a group path. Path is normalized (trim/lowercase/collapse slashes) and validated using group path rules |
+| `--token <token>` | (see below) | Auth token for registry API requests (for CI/CD). Note: `-t` is taken by `--tag` |
+
+### Token resolution
+
+`--token` flag → `RESKILL_TOKEN` env → `~/.reskillrc` stored config. Without any token, publish exits with error (unless `--dry-run`).
 
 ### Validation Rules
 

@@ -7,9 +7,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Use vi.hoisted to ensure mockSearch is available when vi.mock factory runs
-const { mockSearch, mockResolveRegistry } = vi.hoisted(() => ({
+const { mockSearch, mockResolveRegistry, mockGetToken } = vi.hoisted(() => ({
   mockSearch: vi.fn(),
   mockResolveRegistry: vi.fn().mockReturnValue('https://reskill.info/'),
+  mockGetToken: vi.fn().mockReturnValue(null),
 }));
 
 vi.mock('../../core/registry-client.js', () => {
@@ -33,6 +34,12 @@ vi.mock('../../utils/registry.js', () => ({
   resolveRegistryForSearch: mockResolveRegistry,
 }));
 
+vi.mock('../../core/auth-manager.js', () => ({
+  AuthManager: vi.fn().mockImplementation(() => ({
+    getToken: mockGetToken,
+  })),
+}));
+
 import { RegistryError } from '../../core/registry-client.js';
 import { findAction, findCommand } from './find.js';
 
@@ -43,6 +50,7 @@ describe('find command', () => {
 
   beforeEach(() => {
     mockSearch.mockReset();
+    mockGetToken.mockReset().mockReturnValue(null);
     mockResolveRegistry.mockReset().mockReturnValue('https://reskill.info/');
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -79,6 +87,11 @@ describe('find command', () => {
     it('should have json option', () => {
       const jsonOpt = findCommand.options.find((o) => o.long === '--json');
       expect(jsonOpt).toBeDefined();
+    });
+
+    it('should have token option', () => {
+      const tokenOpt = findCommand.options.find((o) => o.long === '--token');
+      expect(tokenOpt).toBeDefined();
     });
   });
 
@@ -196,6 +209,66 @@ describe('find command', () => {
       await findAction('test', { limit: '0' });
 
       expect(process.exit).toHaveBeenCalledWith(1);
+    });
+  });
+
+  // ==========================================================================
+  // Token authentication
+  // ==========================================================================
+
+  describe('token authentication', () => {
+    it('should pass --token to RegistryClient', async () => {
+      const { RegistryClient } = await import('../../core/registry-client.js');
+      mockSearch.mockResolvedValueOnce({ items: [], total: 0 });
+
+      await findAction('test', { token: 'my-jwt-token' });
+
+      expect(RegistryClient).toHaveBeenCalledWith({
+        registry: 'https://reskill.info/',
+        token: 'my-jwt-token',
+      });
+    });
+
+    it('should fallback to AuthManager with resolved registry when --token is not provided', async () => {
+      const { RegistryClient } = await import('../../core/registry-client.js');
+      mockGetToken.mockReturnValue('stored-token');
+      mockSearch.mockResolvedValueOnce({ items: [], total: 0 });
+
+      await findAction('test', {});
+
+      // Should use resolved registry URL, not raw options.registry
+      expect(mockGetToken).toHaveBeenCalledWith('https://reskill.info/');
+      expect(RegistryClient).toHaveBeenCalledWith({
+        registry: 'https://reskill.info/',
+        token: 'stored-token',
+      });
+    });
+
+    it('should prefer --token over AuthManager token', async () => {
+      const { RegistryClient } = await import('../../core/registry-client.js');
+      mockGetToken.mockReturnValue('stored-token');
+      mockSearch.mockResolvedValueOnce({ items: [], total: 0 });
+
+      await findAction('test', { token: 'cli-token' });
+
+      expect(mockGetToken).not.toHaveBeenCalled();
+      expect(RegistryClient).toHaveBeenCalledWith({
+        registry: 'https://reskill.info/',
+        token: 'cli-token',
+      });
+    });
+
+    it('should create RegistryClient without token when none available', async () => {
+      const { RegistryClient } = await import('../../core/registry-client.js');
+      mockGetToken.mockReturnValue(null);
+      mockSearch.mockResolvedValueOnce({ items: [], total: 0 });
+
+      await findAction('test', {});
+
+      expect(RegistryClient).toHaveBeenCalledWith({
+        registry: 'https://reskill.info/',
+        token: undefined,
+      });
     });
   });
 });

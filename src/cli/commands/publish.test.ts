@@ -4,13 +4,15 @@
  * Tests for helper functions in the publish command
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getScopeForRegistry } from '../../utils/registry-scope.js';
 import {
   buildPublishSkillName,
+  checkAuth,
   isBlockedPublicRegistry,
   parseConfirmAnswer,
   parseVersionInput,
+  publishCommand,
 } from './publish.js';
 
 describe('publish command', () => {
@@ -332,6 +334,62 @@ describe('publish command', () => {
         expect(result.valid).toBe(false);
         expect(result.error).toBeDefined();
       });
+    });
+  });
+
+  // ============================================================================
+  // Command definition - --token option
+  // ============================================================================
+
+  describe('command definition', () => {
+    it('should have --token option (long only)', () => {
+      const tokenOpt = publishCommand.options.find((o) => o.long === '--token');
+      expect(tokenOpt).toBeDefined();
+      // -t is taken by --tag, so --token must not have short flag
+      expect(tokenOpt?.short).toBeUndefined();
+    });
+  });
+
+  // ============================================================================
+  // checkAuth - --token support
+  // ============================================================================
+
+  describe('checkAuth', () => {
+    let exitSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    });
+
+    afterEach(() => {
+      exitSpy.mockRestore();
+    });
+
+    it('should return cliToken directly when provided', () => {
+      const result = checkAuth('https://registry.example.com', false, 'my-cli-token');
+      expect(result).toEqual({ token: 'my-cli-token' });
+      expect(process.exit).not.toHaveBeenCalled();
+    });
+
+    it('should not call process.exit when cliToken is provided', () => {
+      // Even without env/config, --token should work
+      checkAuth('https://registry.example.com', false, 'ci-token');
+      expect(process.exit).not.toHaveBeenCalled();
+    });
+
+    it('should exit when no token available and not dry-run', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      checkAuth('https://registry.example.com', false);
+
+      expect(process.exit).toHaveBeenCalledWith(1);
+    });
+
+    it('should return null when no token available in dry-run mode', () => {
+      const result = checkAuth('https://registry.example.com', true);
+      expect(result).toBeNull();
+      expect(process.exit).not.toHaveBeenCalled();
     });
   });
 });

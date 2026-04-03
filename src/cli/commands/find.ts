@@ -13,6 +13,7 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
+import { AuthManager } from '../../core/auth-manager.js';
 import {
   RegistryClient,
   RegistryError,
@@ -29,6 +30,7 @@ interface FindOptions {
   registry?: string;
   limit?: string;
   json?: boolean;
+  token?: string;
 }
 
 // ============================================================================
@@ -118,7 +120,15 @@ export async function findAction(query: string, options: FindOptions): Promise<v
   }
 
   const registry = resolveRegistryForSearch(options.registry);
-  const client = new RegistryClient({ registry });
+
+  // Resolve auth token: --token flag > RESKILL_TOKEN env > ~/.reskillrc
+  let token = options.token;
+  if (!token) {
+    const authManager = new AuthManager();
+    token = authManager.getToken(registry) ?? undefined;
+  }
+
+  const client = new RegistryClient({ registry, token });
 
   try {
     const { items, total } = await client.search(query, { limit });
@@ -156,6 +166,7 @@ export const findCommand = new Command('find')
   )
   .option('-l, --limit <n>', 'Maximum number of results', '10')
   .option('-j, --json', 'Output as JSON')
+  .option('-t, --token <token>', 'Auth token for registry API requests (for CI/CD)')
   .action(findAction);
 
 export default findCommand;
