@@ -65,22 +65,22 @@ npx reskill@latest <command>  # Or use npx directly
 
 ### Common Options
 
-| Option                    | Commands                                      | Description                                                   |
-| ------------------------- | --------------------------------------------- | ------------------------------------------------------------- |
-| `--no-save`               | `install`                                     | Install without saving to `skills.json` (for personal skills) |
-| `-g, --global`            | `install`, `uninstall`, `list`                | Install/manage skills globally (user directory)               |
-| `-a, --agent <agents...>` | `install`                                     | Specify target agents (e.g., `cursor`, `claude-code`)        |
-| `--mode <mode>`           | `install`                                     | Installation mode: `symlink` (default) or `copy`             |
-| `--all`                   | `install`                                     | Install to all agents                                         |
-| `-y, --yes`               | `install`, `uninstall`, `publish`             | Skip confirmation prompts                                     |
-| `-f, --force`             | `install`                                     | Force reinstall even if already installed                     |
-| `-s, --skill <names...>`  | `install`                                     | Select specific skill(s) by name from a multi-skill repo     |
-| `--list`                  | `install`                                     | List available skills in the repository without installing    |
-| `-t, --token <token>`     | `install`                                     | Auth token for registry API requests (for CI/CD)             |
-| `-r, --registry <url>`    | `install`, `group`, `publish`                 | Registry URL override for registry-enabled commands           |
-| `-j, --json`              | `list`, `info`, `outdated`, `doctor`, `group` | Output as JSON                                                |
-| `-l, --limit <n>`         | `find`                                        | Maximum number of search results                              |
-| `--skip-network`          | `doctor`                                      | Skip network connectivity checks                              |
+| Option                    | Commands                                                      | Description                                                   |
+| ------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------- |
+| `--no-save`               | `install`                                                     | Install without saving to `skills.json` (for personal skills) |
+| `-g, --global`            | `install`, `uninstall`, `list`                                | Install/manage skills globally (user directory)               |
+| `-a, --agent <agents...>` | `install`                                                     | Specify target agents (e.g., `cursor`, `claude-code`)         |
+| `--mode <mode>`           | `install`                                                     | Installation mode: `symlink` (default) or `copy`              |
+| `--all`                   | `install`                                                     | Install to all agents                                          |
+| `-y, --yes`               | `install`, `uninstall`, `publish`                             | Skip confirmation prompts                                      |
+| `-f, --force`             | `install`                                                     | Force reinstall even if already installed                      |
+| `-s, --skill <names...>`  | `install`                                                     | Select specific skill(s) by name from a multi-skill repo      |
+| `--list`                  | `install`                                                     | List available skills in the repository without installing     |
+| `-t, --token <token>`     | `install`, `find`, `group`, `publish`, `login`                | Auth token for registry API requests (for CI/CD)               |
+| `-r, --registry <url>`    | `install`, `find`, `group`, `publish`, `login`, `logout`, `whoami` | Registry URL override for registry-enabled commands       |
+| `-j, --json`              | `list`, `info`, `outdated`, `doctor`, `group`, `find`         | Output as JSON                                                 |
+| `-l, --limit <n>`         | `find`                                                        | Maximum number of search results                               |
+| `--skip-network`          | `doctor`                                                      | Skip network connectivity checks                              |
 
 Run `reskill <command> --help` for complete options and detailed usage.
 
@@ -222,14 +222,25 @@ git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.company.
 
 Skills are installed to `.skills/` by default and can be integrated with any agent:
 
-| Agent          | Path                                  |
-| -------------- | ------------------------------------- |
-| Cursor         | `.cursor/rules/` or `.cursor/skills/` |
-| Claude Code    | `.claude/skills/`                     |
-| Codex          | `.codex/skills/`                      |
-| Windsurf       | `.windsurf/skills/`                   |
-| GitHub Copilot | `.github/skills/`                     |
-| OpenCode       | `.opencode/skills/`                   |
+| Agent          | Path               |
+| -------------- | ------------------ |
+| Amp            | `.agents/skills`   |
+| Antigravity    | `.agent/skills`    |
+| Claude Code    | `.claude/skills`   |
+| Clawdbot       | `skills`           |
+| Codex          | `.codex/skills`    |
+| Cursor         | `.cursor/skills`   |
+| Droid          | `.factory/skills`  |
+| Gemini CLI     | `.gemini/skills`   |
+| GitHub Copilot | `.github/skills`   |
+| Goose          | `.goose/skills`    |
+| Kilo Code      | `.kilocode/skills` |
+| Kiro CLI       | `.kiro/skills`     |
+| Neovate        | `.neovate/skills`  |
+| OpenCode       | `.opencode/skills` |
+| Roo Code       | `.roo/skills`      |
+| Trae           | `.trae/skills`     |
+| Windsurf       | `.windsurf/skills` |
 
 ## Publishing Skills
 

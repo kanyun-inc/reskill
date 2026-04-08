@@ -1,7 +1,7 @@
 ---
 name: reskill-usage
 description: Teaches AI agents how to use reskill — a Git-based package manager for AI agent skills. Covers CLI commands, install formats, configuration, publishing, and common workflows.
-version: 0.1.2
+version: 0.1.3
 author: reskill
 tags:
   - cli
@@ -11,7 +11,7 @@ tags:
 ---
 
 <!-- source: README.md -->
-<!-- synced: 2026-02-12 -->
+<!-- synced: 2026-04-08 -->
 
 # reskill Usage Guide
 
@@ -56,40 +56,43 @@ npx reskill@latest list
 | Command               | Alias                | Description                               |
 | --------------------- | -------------------- | ----------------------------------------- |
 | `init`                | -                    | Initialize `skills.json`                  |
-| `find <query>`        | -                    | Search for skills in the registry         |
+| `find <query>`        | `search`             | Search for skills in the registry         |
 | `install [skills...]` | `i`                  | Install one or more skills                |
 | `list`                | `ls`                 | List installed skills                     |
 | `info <skill>`        | -                    | Show skill details                        |
 | `update [skill]`      | `up`                 | Update skills                             |
 | `outdated`            | -                    | Check for outdated skills                 |
 | `uninstall <skill>`   | `un`, `rm`, `remove` | Remove a skill                            |
+| `group`               | -                    | Manage skill groups ¹                     |
 | `publish [path]`      | `pub`                | Publish a skill to the registry ¹         |
 | `login`               | -                    | Authenticate with the registry ¹          |
 | `logout`              | -                    | Remove stored authentication ¹            |
 | `whoami`              | -                    | Display current logged in user ¹          |
 | `doctor`              | -                    | Diagnose environment and check for issues |
-| `completion install`  | -                    | Install shell tab completion              |
+| `completion [action]` | -                    | Setup or remove shell tab completion      |
 
-> ¹ Registry commands (`publish`, `login`, `logout`, `whoami`) require a private registry deployment. Not available for public use yet.
+> ¹ Registry commands (`group`, `publish`, `login`, `logout`, `whoami`) require a private registry deployment. Not available for public use yet.
 
 Run `reskill <command> --help` for complete options and detailed usage.
 
 ### Common Options
 
-| Option                    | Commands                             | Description                                                   |
-| ------------------------- | ------------------------------------ | ------------------------------------------------------------- |
-| `--no-save`               | `install`                            | Install without saving to `skills.json` (for personal skills) |
-| `-g, --global`            | `install`, `uninstall`, `list`       | Install/manage skills globally (user directory)               |
-| `-a, --agent <agents...>` | `install`                            | Specify target agents (e.g., `cursor`, `claude-code`)         |
-| `--mode <mode>`           | `install`                            | Installation mode: `symlink` (default) or `copy`              |
-| `--all`                   | `install`                            | Install to all agents                                         |
-| `-y, --yes`               | `install`, `uninstall`, `publish`    | Skip confirmation prompts                                     |
-| `-f, --force`             | `install`                            | Force reinstall even if already installed                     |
-| `-s, --skill <names...>`  | `install`                            | Select specific skill(s) by name from a multi-skill repo      |
-| `--list`                  | `install`                            | List available skills in the repository without installing    |
-| `-r, --registry <url>`    | `install`, `publish`                 | Registry URL override for registry-based installs             |
-| `-t, --token <token>`     | `install`                            | Auth token for registry API requests (for CI/CD)              |
-| `-j, --json`              | `list`, `info`, `outdated`, `doctor` | Output as JSON                                                |
+| Option                    | Commands                                                      | Description                                                   |
+| ------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------- |
+| `--no-save`               | `install`                                                     | Install without saving to `skills.json` (for personal skills) |
+| `-g, --global`            | `install`, `uninstall`, `list`                                | Install/manage skills globally (user directory)               |
+| `-a, --agent <agents...>` | `install`                                                     | Specify target agents (e.g., `cursor`, `claude-code`)         |
+| `--mode <mode>`           | `install`                                                     | Installation mode: `symlink` (default) or `copy`              |
+| `--all`                   | `install`                                                     | Install to all agents                                         |
+| `-y, --yes`               | `install`, `uninstall`, `publish`                             | Skip confirmation prompts                                     |
+| `-f, --force`             | `install`                                                     | Force reinstall even if already installed                     |
+| `-s, --skill <names...>`  | `install`                                                     | Select specific skill(s) by name from a multi-skill repo      |
+| `--list`                  | `install`                                                     | List available skills in the repository without installing    |
+| `-t, --token <token>`     | `install`, `find`, `group`, `publish`, `login`                | Auth token for registry API requests (for CI/CD)              |
+| `-r, --registry <url>`    | `install`, `find`, `group`, `publish`, `login`, `logout`, `whoami` | Registry URL override for registry-enabled commands      |
+| `-j, --json`              | `list`, `info`, `outdated`, `doctor`, `group`, `find`         | Output as JSON                                                |
+| `-l, --limit <n>`         | `find`                                                        | Maximum number of search results                              |
+| `--skip-network`          | `doctor`                                                      | Skip network connectivity checks                             |
 
 ## Source Formats
 
@@ -211,20 +214,32 @@ The project configuration file, created by `reskill init`:
 | `RESKILL_TOKEN`     | Auth token (takes precedence over ~/.reskillrc) | -                              |
 | `RESKILL_REGISTRY`  | Default registry URL                            | `https://registry.reskill.dev` |
 | `DEBUG`             | Enable debug logging                            | -                              |
+| `VERBOSE`           | Enable debug logging (same effect as `DEBUG`)   | -                              |
 | `NO_COLOR`          | Disable colored output                          | -                              |
 
 ## Multi-Agent Support
 
 Skills are installed to `.skills/` by default and can be integrated with any agent:
 
-| Agent          | Path                                  |
-| -------------- | ------------------------------------- |
-| Cursor         | `.cursor/rules/` or `.cursor/skills/` |
-| Claude Code    | `.claude/skills/`                     |
-| Codex          | `.codex/skills/`                      |
-| Windsurf       | `.windsurf/skills/`                   |
-| GitHub Copilot | `.github/skills/`                     |
-| OpenCode       | `.opencode/skills/`                   |
+| Agent          | Path               |
+| -------------- | ------------------ |
+| Amp            | `.agents/skills`   |
+| Antigravity    | `.agent/skills`    |
+| Claude Code    | `.claude/skills`   |
+| Clawdbot       | `skills`           |
+| Codex          | `.codex/skills`    |
+| Cursor         | `.cursor/skills`   |
+| Droid          | `.factory/skills`  |
+| Gemini CLI     | `.gemini/skills`   |
+| GitHub Copilot | `.github/skills`   |
+| Goose          | `.goose/skills`    |
+| Kilo Code      | `.kilocode/skills` |
+| Kiro CLI       | `.kiro/skills`     |
+| Neovate        | `.neovate/skills`  |
+| OpenCode       | `.opencode/skills` |
+| Roo Code       | `.roo/skills`      |
+| Trae           | `.trae/skills`     |
+| Windsurf       | `.windsurf/skills` |
 
 Use `--agent` to target specific agents, or `--all` to install to all detected agents:
 
@@ -276,7 +291,7 @@ reskill publish ./path/to/skill
 reskill publish -y
 ```
 
-The skill directory must contain a valid `SKILL.md`. A `skill.json` with `name`, `version`, and `description` is also required for publishing.
+The skill directory must contain a valid `SKILL.md` with `name`, `version`, and `description` in its frontmatter.
 
 ## Common Workflows
 

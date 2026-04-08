@@ -65,22 +65,22 @@ npx reskill@latest <command>  # 或直接使用 npx
 
 ### 常用选项
 
-| 选项                      | 适用命令                                      | 说明                                         |
-| ------------------------- | --------------------------------------------- | -------------------------------------------- |
-| `--no-save`               | `install`                                     | 安装时不保存到 `skills.json`（用于个人技能） |
-| `-g, --global`            | `install`, `uninstall`, `list`                | 全局安装/管理技能（用户目录）                |
-| `-a, --agent <agents...>` | `install`                                     | 指定目标 Agent（如 `cursor`, `claude-code`） |
-| `--mode <mode>`           | `install`                                     | 安装模式：`symlink`（默认）或 `copy`         |
-| `--all`                   | `install`                                     | 安装到所有 Agent                             |
-| `-y, --yes`               | `install`, `uninstall`, `publish`             | 跳过确认提示                                 |
-| `-f, --force`             | `install`                                     | 强制重新安装                                 |
-| `-s, --skill <names...>`  | `install`                                     | 从多 skill 仓库中选择指定 skill              |
-| `--list`                  | `install`                                     | 列出仓库中可用的 skills（不安装）            |
-| `-t, --token <token>`     | `install`                                     | 认证令牌（用于 CI/CD 访问私有 skill）        |
-| `-r, --registry <url>`    | `install`, `group`, `publish`                 | 覆盖 registry URL（用于 registry 相关命令）  |
-| `-j, --json`              | `list`, `info`, `outdated`, `doctor`, `group` | JSON 格式输出                                |
-| `-l, --limit <n>`         | `find`                                        | 限制搜索结果数量                             |
-| `--skip-network`          | `doctor`                                      | 跳过网络连通性检查                           |
+| 选项                      | 适用命令                                                      | 说明                                         |
+| ------------------------- | ------------------------------------------------------------- | -------------------------------------------- |
+| `--no-save`               | `install`                                                     | 安装时不保存到 `skills.json`（用于个人技能） |
+| `-g, --global`            | `install`, `uninstall`, `list`                                | 全局安装/管理技能（用户目录）                |
+| `-a, --agent <agents...>` | `install`                                                     | 指定目标 Agent（如 `cursor`, `claude-code`） |
+| `--mode <mode>`           | `install`                                                     | 安装模式：`symlink`（默认）或 `copy`         |
+| `--all`                   | `install`                                                     | 安装到所有 Agent                             |
+| `-y, --yes`               | `install`, `uninstall`, `publish`                             | 跳过确认提示                                 |
+| `-f, --force`             | `install`                                                     | 强制重新安装                                 |
+| `-s, --skill <names...>`  | `install`                                                     | 从多 skill 仓库中选择指定 skill              |
+| `--list`                  | `install`                                                     | 列出仓库中可用的 skills（不安装）            |
+| `-t, --token <token>`     | `install`, `find`, `group`, `publish`, `login`                | 认证令牌（用于 CI/CD 访问私有 skill）        |
+| `-r, --registry <url>`    | `install`, `find`, `group`, `publish`, `login`, `logout`, `whoami` | 覆盖 registry URL（用于 registry 相关命令）  |
+| `-j, --json`              | `list`, `info`, `outdated`, `doctor`, `group`, `find`         | JSON 格式输出                                |
+| `-l, --limit <n>`         | `find`                                                        | 限制搜索结果数量                             |
+| `--skip-network`          | `doctor`                                                      | 跳过网络连通性检查                           |
 
 运行 `reskill <command> --help` 查看完整选项和详细用法。
 
@@ -222,14 +222,25 @@ git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.company.
 
 Skills 默认安装到 `.skills/`，可与任何 Agent 集成：
 
-| Agent          | 路径                                  |
-| -------------- | ------------------------------------- |
-| Cursor         | `.cursor/rules/` 或 `.cursor/skills/` |
-| Claude Code    | `.claude/skills/`                     |
-| Codex          | `.codex/skills/`                      |
-| Windsurf       | `.windsurf/skills/`                   |
-| GitHub Copilot | `.github/skills/`                     |
-| OpenCode       | `.opencode/skills/`                   |
+| Agent          | 路径               |
+| -------------- | ------------------ |
+| Amp            | `.agents/skills`   |
+| Antigravity    | `.agent/skills`    |
+| Claude Code    | `.claude/skills`   |
+| Clawdbot       | `skills`           |
+| Codex          | `.codex/skills`    |
+| Cursor         | `.cursor/skills`   |
+| Droid          | `.factory/skills`  |
+| Gemini CLI     | `.gemini/skills`   |
+| GitHub Copilot | `.github/skills`   |
+| Goose          | `.goose/skills`    |
+| Kilo Code      | `.kilocode/skills` |
+| Kiro CLI       | `.kiro/skills`     |
+| Neovate        | `.neovate/skills`  |
+| OpenCode       | `.opencode/skills` |
+| Roo Code       | `.roo/skills`      |
+| Trae           | `.trae/skills`     |
+| Windsurf       | `.windsurf/skills` |
 
 ## 发布 Skills
 
