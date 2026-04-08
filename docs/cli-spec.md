@@ -1190,6 +1190,10 @@ reskill group <subcommand> [options]
 | `member remove <path> <user>` | Remove a member from a group |
 | `member role <path> <user> <role>` | Change a member's role |
 
+### Token resolution
+
+All group subcommands support the `-t, --token <token>` option. Resolution priority: `--token` flag → `RESKILL_TOKEN` env → `~/.reskillrc` stored config. When provided, the token is sent as `Authorization: Bearer <token>` header.
+
 ---
 
 ### group list
@@ -1207,6 +1211,7 @@ reskill group list [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-r, --registry <url>` | `$RESKILL_REGISTRY` | Registry URL |
+| `-t, --token <token>` | - | Auth token for registry API requests (for CI/CD) |
 | `--tree` | `false` | Render groups as a tree (requests flat group list from API) |
 | `-j, --json` | `false` | Output raw JSON |
 
@@ -1244,6 +1249,7 @@ reskill group create [options] <name>
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-r, --registry <url>` | `$RESKILL_REGISTRY` | Registry URL |
+| `-t, --token <token>` | - | Auth token for registry API requests (for CI/CD) |
 | `-d, --description <text>` | - | Group description |
 | `--visibility <level>` | `public` | Visibility: `public` or `private` |
 | `--parent <path>` | - | Parent group path (for sub-groups) |
@@ -1311,6 +1317,7 @@ reskill group info [options] <path>
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-r, --registry <url>` | `$RESKILL_REGISTRY` | Registry URL |
+| `-t, --token <token>` | - | Auth token for registry API requests (for CI/CD) |
 | `-j, --json` | `false` | Output raw JSON |
 
 #### Behavior
@@ -1346,6 +1353,7 @@ reskill group delete [options] <path>
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-r, --registry <url>` | `$RESKILL_REGISTRY` | Registry URL |
+| `-t, --token <token>` | - | Auth token for registry API requests (for CI/CD) |
 | `-n, --dry-run` | `false` | Preview deletion without executing |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 
@@ -1378,6 +1386,7 @@ reskill group member list [options] <path>
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-r, --registry <url>` | `$RESKILL_REGISTRY` | Registry URL |
+| `-t, --token <token>` | - | Auth token for registry API requests (for CI/CD) |
 | `-j, --json` | `false` | Output raw JSON |
 
 #### Behavior
@@ -1407,6 +1416,7 @@ reskill group member add [options] <path> <users...>
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-r, --registry <url>` | `$RESKILL_REGISTRY` | Registry URL |
+| `-t, --token <token>` | - | Auth token for registry API requests (for CI/CD) |
 | `--role <role>` | `developer` | Role to assign: `owner`, `maintainer`, or `developer` |
 
 #### Behavior
@@ -1436,6 +1446,7 @@ reskill group member remove [options] <path> <user>
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-r, --registry <url>` | `$RESKILL_REGISTRY` | Registry URL |
+| `-t, --token <token>` | - | Auth token for registry API requests (for CI/CD) |
 
 #### Behavior
 
@@ -1471,6 +1482,7 @@ reskill group member role [options] <path> <user> <role>
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-r, --registry <url>` | `$RESKILL_REGISTRY` | Registry URL |
+| `-t, --token <token>` | - | Auth token for registry API requests (for CI/CD) |
 
 #### Behavior
 
