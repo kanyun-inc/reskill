@@ -57,6 +57,8 @@ import {
 export interface SkillManagerOptions {
   /** Global mode, install to ~/.agents/skills/ */
   global?: boolean;
+  /** Skip all skills.json and skills.lock writes (platform integration mode) */
+  noManifest?: boolean;
 }
 
 /**
@@ -91,6 +93,19 @@ export class SkillManager {
     );
     this.httpResolver = new HttpResolver();
     this.registryResolver = new RegistryResolver();
+
+    if (options?.noManifest) {
+      this.setNoManifest(true);
+    }
+  }
+
+  /**
+   * Enable/disable no-manifest mode on both ConfigLoader and LockManager.
+   * When enabled, no skills.json or skills.lock writes occur.
+   */
+  setNoManifest(enabled: boolean): void {
+    this.config.setNoManifest(enabled);
+    this.lockManager.setNoManifest(enabled);
   }
 
   /**

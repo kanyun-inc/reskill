@@ -15,10 +15,19 @@ export class LockManager {
   private projectRoot: string;
   private lockPath: string;
   private lockData: SkillsLock | null = null;
+  private _noManifest = false;
 
   constructor(projectRoot?: string) {
     this.projectRoot = projectRoot || process.cwd();
     this.lockPath = getSkillsLockPath(this.projectRoot);
+  }
+
+  /**
+   * Enable/disable no-manifest mode.
+   * When enabled, write operations (save, set, lockSkill) become no-ops.
+   */
+  setNoManifest(enabled: boolean): void {
+    this._noManifest = enabled;
   }
 
   /**
@@ -72,6 +81,7 @@ export class LockManager {
    * Save lock file
    */
   save(lockToSave?: SkillsLock): void {
+    if (this._noManifest) return;
     const toSave = lockToSave || this.lockData;
     if (!toSave) {
       throw new Error('No lock to save');
@@ -92,6 +102,7 @@ export class LockManager {
    * Set locked skill
    */
   set(name: string, skill: LockedSkill): void {
+    if (this._noManifest) return;
     const lock = this.load();
     lock.skills[name] = skill;
     this.save();
@@ -101,6 +112,7 @@ export class LockManager {
    * Remove locked skill
    */
   remove(name: string): boolean {
+    if (this._noManifest) return false;
     const lock = this.load();
     if (lock.skills[name]) {
       delete lock.skills[name];
