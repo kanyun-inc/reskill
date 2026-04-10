@@ -25,12 +25,12 @@ describe('CLI Integration: install --skip-manifest', () => {
   });
 
   it('should install skill files without creating skills.json or skills.lock', () => {
-    const { exitCode } = runCli(
+    const { exitCode, stdout, stderr } = runCli(
       `install ${skillRepoUrl} -a cursor --mode copy -y --skip-manifest`,
       tempDir,
     );
 
-    expect(exitCode).toBe(0);
+    expect(exitCode, `install failed:\nstdout: ${stdout}\nstderr: ${stderr}`).toBe(0);
     expect(pathExists(path.join(tempDir, '.cursor', 'skills', 'test-skill', 'SKILL.md'))).toBe(
       true,
     );
@@ -42,23 +42,25 @@ describe('CLI Integration: install --skip-manifest', () => {
     const existingConfig = { skills: { existing: 'github:user/existing' }, defaults: {} };
     fs.writeFileSync(path.join(tempDir, 'skills.json'), JSON.stringify(existingConfig, null, 2));
 
-    const { exitCode } = runCli(
+    const { exitCode, stdout, stderr } = runCli(
       `install ${skillRepoUrl} -a cursor --mode copy -y --skip-manifest`,
       tempDir,
     );
 
-    expect(exitCode).toBe(0);
+    expect(exitCode, `install failed:\nstdout: ${stdout}\nstderr: ${stderr}`).toBe(0);
     const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.json'), 'utf-8'));
     expect(config.skills).toEqual({ existing: 'github:user/existing' });
     expect(config.skills['test-skill']).toBeUndefined();
   });
 
   it('should support RESKILL_NO_MANIFEST env var', () => {
-    const { exitCode } = runCli(`install ${skillRepoUrl} -a cursor --mode copy -y`, tempDir, {
-      RESKILL_NO_MANIFEST: '1',
-    });
+    const { exitCode, stdout, stderr } = runCli(
+      `install ${skillRepoUrl} -a cursor --mode copy -y`,
+      tempDir,
+      { RESKILL_NO_MANIFEST: '1' },
+    );
 
-    expect(exitCode).toBe(0);
+    expect(exitCode, `install failed:\nstdout: ${stdout}\nstderr: ${stderr}`).toBe(0);
     expect(pathExists(path.join(tempDir, '.cursor', 'skills', 'test-skill', 'SKILL.md'))).toBe(
       true,
     );
