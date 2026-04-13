@@ -348,6 +348,12 @@ describe('publish command', () => {
       // -t is --token (consistent with other commands); --tag has no short flag
       expect(tokenOpt?.short).toBe('-t');
     });
+
+    it('should have --tag option without short flag', () => {
+      const tagOpt = publishCommand.options.find((o) => o.long === '--tag');
+      expect(tagOpt).toBeDefined();
+      expect(tagOpt?.short).toBeUndefined();
+    });
   });
 
   // ============================================================================

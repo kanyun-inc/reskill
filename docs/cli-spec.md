@@ -565,12 +565,12 @@ reskill pub [path] [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-r, --registry <url>` | `https://registry.reskill.dev` | Registry URL |
-| `-t, --tag <tag>` | auto-detect | Git tag to publish |
+| `--tag <tag>` | auto-detect | Git tag to publish |
 | `--access <level>` | `public` | Access level: `public` or `restricted` |
 | `-n, --dry-run` | `false` | Validate without publishing |
 | `-y, --yes` | `false` | Skip confirmation prompts |
 | `-g, --group <path>` | - | Publish skill into a group path. Path is normalized (trim/lowercase/collapse slashes) and validated using group path rules |
-| `--token <token>` | (see below) | Auth token for registry API requests (for CI/CD). Note: `-t` is taken by `--tag` |
+| `-t, --token <token>` | (see below) | Auth token for registry API requests (for CI/CD) |
 
 ### Token resolution
 
