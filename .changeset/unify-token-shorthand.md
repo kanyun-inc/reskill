@@ -1,5 +1,5 @@
 ---
-"reskill": patch
+"reskill": minor
 ---
 
 Unify `-t` shorthand to always mean `--token` across all commands. Previously, `publish` used `-t` for `--tag` and had no shorthand for `--token`. Now `-t` consistently maps to `--token` in all commands, and `--tag` is long-only.
