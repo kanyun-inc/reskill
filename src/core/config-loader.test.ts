@@ -622,4 +622,73 @@ describe('ConfigLoader', () => {
       expect(loader.normalizeSkillRef('git@github.com:user/repo')).toBe('github:user/repo');
     });
   });
+
+  describe('noManifest mode', () => {
+    it('should skip disk write but update in-memory cache when noManifest is enabled', () => {
+      configLoader.setNoManifest(true);
+      const config = configLoader.create();
+      expect(fs.existsSync(path.join(tempDir, 'skills.json'))).toBe(false);
+      expect(config.skills).toEqual({});
+      expect(configLoader.getDefaults().installDir).toBe('.skills');
+    });
+
+    it('should skip ensureExists() when noManifest is enabled', () => {
+      configLoader.setNoManifest(true);
+      const created = configLoader.ensureExists();
+      expect(created).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, 'skills.json'))).toBe(false);
+    });
+
+    it('should skip addSkill() when noManifest is enabled', () => {
+      configLoader.create();
+      configLoader.setNoManifest(true);
+      configLoader.addSkill('test', '@scope/test');
+      configLoader.setNoManifest(false);
+      const config = configLoader.load();
+      expect(config.skills).toEqual({});
+    });
+
+    it('should skip updateDefaults() when noManifest is enabled', () => {
+      configLoader.create();
+      const originalDefaults = configLoader.getDefaults();
+      configLoader.setNoManifest(true);
+      configLoader.updateDefaults({ installDir: 'changed' });
+      configLoader.setNoManifest(false);
+      configLoader.reload();
+      expect(configLoader.getDefaults().installDir).toBe(originalDefaults.installDir);
+    });
+
+    it('should skip addRegistry() when noManifest is enabled', () => {
+      configLoader.create();
+      configLoader.setNoManifest(true);
+      configLoader.addRegistry('custom', 'https://custom.example.com');
+      configLoader.setNoManifest(false);
+      configLoader.reload();
+      expect(configLoader.getRegistries().custom).toBeUndefined();
+    });
+
+    it('should skip removeSkill() when noManifest is enabled', () => {
+      configLoader.create({ skills: { existing: 'github:user/repo' } });
+      configLoader.setNoManifest(true);
+      const removed = configLoader.removeSkill('existing');
+      expect(removed).toBe(false);
+      configLoader.setNoManifest(false);
+      configLoader.reload();
+      expect(configLoader.load().skills.existing).toBe('github:user/repo');
+    });
+
+    it('should not affect read operations', () => {
+      configLoader.create({ skills: { existing: 'github:user/repo' } });
+      configLoader.setNoManifest(true);
+      const config = configLoader.load();
+      expect(config.skills.existing).toBe('github:user/repo');
+      expect(configLoader.getDefaults().installDir).toBe('.skills');
+    });
+
+    it('should expose noManifest getter', () => {
+      expect(configLoader.noManifest).toBe(false);
+      configLoader.setNoManifest(true);
+      expect(configLoader.noManifest).toBe(true);
+    });
+  });
 });

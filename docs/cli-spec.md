@@ -158,6 +158,7 @@ reskill install github:user/skill1 github:user/skill2@v1.0.0 gitlab:team/skill3
 | `--list` | `false` | With a single repo ref: list available skills in the repository without installing |
 | `-r, --registry <url>` | - | Registry URL override for registry-based installs |
 | `-t, --token <token>` | - | Auth token for registry API requests (for CI/CD). Priority: `--token` > `RESKILL_TOKEN` env > `~/.reskillrc` |
+| `--skip-manifest` | `false` | Skip all `skills.json` and `skills.lock` writes (for platform integration). Also activatable via `RESKILL_NO_MANIFEST=1` env var |
 
 ### Multi-skill repository (`--skill`)
 

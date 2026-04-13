@@ -275,4 +275,81 @@ describe('LockManager', () => {
       expect(Object.keys(lockManager.getAll())).toHaveLength(0);
     });
   });
+
+  describe('noManifest mode', () => {
+    it('should skip save() when noManifest is enabled', () => {
+      lockManager.setNoManifest(true);
+      lockManager.lockSkill('test-skill', {
+        source: 'github:user/skill',
+        version: '1.0.0',
+        ref: 'v1.0.0',
+        resolved: 'https://github.com/user/skill',
+        commit: 'abc123',
+      });
+      expect(fs.existsSync(path.join(tempDir, 'skills.lock'))).toBe(false);
+    });
+
+    it('should skip disk write but update in-memory state for set()', () => {
+      lockManager.setNoManifest(true);
+      lockManager.set('test-skill', {
+        source: 'github:user/skill',
+        version: '1.0.0',
+        ref: 'v1.0.0',
+        resolved: 'https://github.com/user/skill',
+        commit: 'abc123',
+        installedAt: new Date().toISOString(),
+      });
+      expect(fs.existsSync(path.join(tempDir, 'skills.lock'))).toBe(false);
+      expect(lockManager.has('test-skill')).toBe(true);
+    });
+
+    it('should still return LockedSkill from lockSkill() even when not persisted', () => {
+      lockManager.setNoManifest(true);
+      const result = lockManager.lockSkill('test-skill', {
+        source: 'github:user/skill',
+        version: '1.0.0',
+        ref: 'v1.0.0',
+        resolved: 'https://github.com/user/skill',
+        commit: 'abc123',
+      });
+      expect(result).toBeDefined();
+      expect(result.source).toBe('github:user/skill');
+      expect(result.version).toBe('1.0.0');
+      expect(fs.existsSync(path.join(tempDir, 'skills.lock'))).toBe(false);
+    });
+
+    it('should skip remove() and return false when noManifest is enabled', () => {
+      lockManager.lockSkill('test-skill', {
+        source: 'github:user/skill',
+        version: '1.0.0',
+        ref: 'v1.0.0',
+        resolved: 'https://github.com/user/skill',
+        commit: 'abc123',
+      });
+      lockManager.setNoManifest(true);
+      const removed = lockManager.remove('test-skill');
+      expect(removed).toBe(false);
+    });
+
+    it('should not affect read operations', () => {
+      const lockData: SkillsLock = {
+        lockfileVersion: 1,
+        skills: {
+          existing: {
+            source: 'github:user/existing',
+            version: '1.0.0',
+            ref: 'v1.0.0',
+            resolved: 'https://github.com/user/existing',
+            commit: 'abc123',
+            installedAt: new Date().toISOString(),
+          },
+        },
+      };
+      fs.writeFileSync(path.join(tempDir, 'skills.lock'), JSON.stringify(lockData));
+      lockManager.setNoManifest(true);
+      const loaded = lockManager.load();
+      expect(loaded.skills.existing).toBeDefined();
+      expect(lockManager.has('existing')).toBe(true);
+    });
+  });
 });

@@ -99,6 +99,25 @@ export class ConfigLoader {
   }
 
   // ==========================================================================
+  // No-Manifest Mode (platform integration)
+  // ==========================================================================
+
+  private _noManifest = false;
+
+  /**
+   * Enable/disable no-manifest mode.
+   * When enabled, all write operations (save, create, addSkill, updateDefaults,
+   * addRegistry) become no-ops. Read operations are unaffected.
+   */
+  setNoManifest(enabled: boolean): void {
+    this._noManifest = enabled;
+  }
+
+  get noManifest(): boolean {
+    return this._noManifest;
+  }
+
+  // ==========================================================================
   // File Operations
   // ==========================================================================
 
@@ -150,7 +169,9 @@ export class ConfigLoader {
     if (!toSave) {
       throw new Error('No config to save');
     }
-    writeJson(this.configPath, toSave);
+    if (!this._noManifest) {
+      writeJson(this.configPath, toSave);
+    }
     this.config = toSave;
   }
 
@@ -160,6 +181,7 @@ export class ConfigLoader {
    * @returns true if file was created, false if it already existed
    */
   ensureExists(): boolean {
+    if (this._noManifest) return false;
     if (this.exists()) {
       return false;
     }
@@ -237,6 +259,7 @@ export class ConfigLoader {
    * @param updates - Partial defaults to merge
    */
   updateDefaults(updates: Partial<SkillsDefaults>): void {
+    if (this._noManifest) return;
     this.ensureConfigLoaded();
 
     if (this.config) {
@@ -435,6 +458,7 @@ export class ConfigLoader {
    * Also auto-adds the registry to the registries field if it's a well-known registry.
    */
   addSkill(name: string, ref: string): void {
+    if (this._noManifest) return;
     this.ensureConfigLoaded();
 
     if (this.config) {
@@ -462,6 +486,7 @@ export class ConfigLoader {
    * @param url - Registry URL (e.g., 'https://github.com')
    */
   addRegistry(name: string, url: string): void {
+    if (this._noManifest) return;
     if (!this.config) {
       // Config not loaded - this is expected when called before load()/create()
       // Callers like addSkill() ensure config is loaded before calling this
@@ -505,6 +530,7 @@ export class ConfigLoader {
    * @returns true if skill was removed, false if it didn't exist
    */
   removeSkill(name: string): boolean {
+    if (this._noManifest) return false;
     this.ensureConfigLoaded();
 
     if (this.config?.skills[name]) {
