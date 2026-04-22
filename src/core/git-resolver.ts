@@ -267,10 +267,15 @@ export class GitResolver {
 
   /**
    * Parse version specification
+   *
+   * When no version spec is provided, returns `type: 'default'` so that
+   * `resolveVersion` auto-detects the repo's real default branch via HEAD.
+   * Previously this returned `branch:main`, which broke installs for repos
+   * whose default branch is not `main` (e.g. self-hosted GitLab with `master`).
    */
   parseVersion(versionSpec?: string): ParsedVersion {
     if (!versionSpec) {
-      return { type: 'branch', value: 'main', raw: '' };
+      return { type: 'default', value: '', raw: '' };
     }
 
     const raw = versionSpec;
@@ -365,6 +370,12 @@ export class GitResolver {
 
       case 'commit':
         return { ref: versionSpec.value, commit: versionSpec.value };
+
+      case 'default': {
+        // No version spec: clone the repository's real default branch.
+        const defaultBranch = await getDefaultBranch(repoUrl);
+        return { ref: defaultBranch };
+      }
 
       default:
         throw new Error(`Unknown version type: ${(versionSpec as ParsedVersion).type}`);

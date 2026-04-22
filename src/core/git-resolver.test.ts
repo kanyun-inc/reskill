@@ -1,5 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitResolver } from './git-resolver.js';
+
+// Hoisted mock for git utils — allows resolveVersion tests to control
+// getDefaultBranch / getLatestTag without hitting a real Git remote.
+vi.mock('../utils/git.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/git.js')>();
+  return {
+    ...actual,
+    getDefaultBranch: vi.fn(),
+    getLatestTag: vi.fn(),
+    getRemoteTags: vi.fn(),
+  };
+});
+
+const gitUtils = await import('../utils/git.js');
+const mockGetDefaultBranch = vi.mocked(gitUtils.getDefaultBranch);
+const mockGetLatestTag = vi.mocked(gitUtils.getLatestTag);
 
 describe('GitResolver', () => {
   const resolver = new GitResolver('github');
@@ -141,10 +157,13 @@ describe('GitResolver', () => {
       });
     });
 
-    it('should default to branch:main for undefined', () => {
+    it('should use "default" type when version spec is undefined (repo default branch)', () => {
+      // Regression guard: previously returned { type: 'branch', value: 'main' },
+      // which broke installs for repos whose default branch is not 'main'
+      // (e.g. self-hosted GitLab EE with 'master' as default).
       expect(resolver.parseVersion(undefined)).toEqual({
-        type: 'branch',
-        value: 'main',
+        type: 'default',
+        value: '',
         raw: '',
       });
     });
@@ -602,10 +621,56 @@ describe('GitResolver', () => {
       expect(result.value).toBe('v1.0.0+build123');
     });
 
-    it('should treat empty string as default branch', () => {
+    it('should treat empty string as "default" type (repo default branch)', () => {
       const result = resolver.parseVersion('');
-      expect(result.type).toBe('branch');
-      expect(result.value).toBe('main');
+      expect(result.type).toBe('default');
+      expect(result.value).toBe('');
+    });
+  });
+
+  describe('resolveVersion — default branch auto-detection', () => {
+    beforeEach(() => {
+      mockGetDefaultBranch.mockReset();
+      mockGetLatestTag.mockReset();
+    });
+
+    it('should call getDefaultBranch when type is "default"', async () => {
+      // Regression: reskill used to hard-code clone ref to "main" when no version
+      // was specified, breaking repos whose default branch is "master".
+      mockGetDefaultBranch.mockResolvedValue('master');
+
+      const result = await resolver.resolveVersion('https://gitlab-ee.example.com/team/repo', {
+        type: 'default',
+        value: '',
+        raw: '',
+      });
+
+      expect(mockGetDefaultBranch).toHaveBeenCalledWith(
+        'https://gitlab-ee.example.com/team/repo',
+      );
+      expect(result).toEqual({ ref: 'master' });
+    });
+
+    it('should preserve explicit branch:main without auto-detection', async () => {
+      // Explicit branch:main must NOT be replaced by auto-detected default branch.
+      const result = await resolver.resolveVersion('https://example.com/owner/repo', {
+        type: 'branch',
+        value: 'main',
+        raw: 'branch:main',
+      });
+
+      expect(mockGetDefaultBranch).not.toHaveBeenCalled();
+      expect(result).toEqual({ ref: 'main' });
+    });
+
+    it('resolve() should end-to-end default to auto-detected branch when version is absent', async () => {
+      // Full resolve() path: "owner/repo" (no version) → default branch.
+      mockGetDefaultBranch.mockResolvedValue('develop');
+
+      const result = await resolver.resolve('user/skill');
+
+      expect(mockGetDefaultBranch).toHaveBeenCalledOnce();
+      expect(result.ref).toBe('develop');
     });
   });
 });

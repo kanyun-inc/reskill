@@ -238,7 +238,8 @@ export type VersionType =
   | 'latest' // latest
   | 'range' // ^2.0.0, ~1.0.0
   | 'branch' // branch:develop
-  | 'commit'; // commit:abc1234
+  | 'commit' // commit:abc1234
+  | 'default'; // (no version spec) — auto-detect repo default branch via HEAD
 
 /**
  * Parsed version information
