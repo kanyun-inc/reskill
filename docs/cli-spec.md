@@ -283,7 +283,7 @@ Skills can be installed directly from HTTP/HTTPS URLs pointing to archive files.
 | Range | `@^2.0.0` | Semver compatible (>=2.0.0 <3.0.0) |
 | Branch | `@branch:develop` | Specific branch |
 | Commit | `@commit:abc1234` | Specific commit hash |
-| (none) | - | Default branch (main) |
+| (none) | - | Repository default branch (auto-detected via `git ls-remote --symref HEAD`) |
 
 ---
 
