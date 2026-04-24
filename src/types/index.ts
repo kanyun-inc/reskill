@@ -403,4 +403,8 @@ export interface SkillInfo {
   created_at?: string;
   /** Last update timestamp */
   updated_at?: string;
+  /** Latest version from dist_tags (present when skill has published artifacts) */
+  latest_version?: string;
+  /** Dist tags array (e.g. [{ tag: 'latest', version: '1.0.0' }]) */
+  dist_tags?: Array<{ tag: string; version: string }>;
 }
