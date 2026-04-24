@@ -1375,13 +1375,14 @@ export class SkillManager {
     }
 
     // Branch: if skill has OSS artifacts (new publish flow), use standard registry download
-    // regardless of source_type. Old data without artifacts falls back to web-published path.
+    // regardless of source_type. Legacy web-published skills without artifacts fall back
+    // to git clone / HTTP download via installFromWebPublished.
     const sourceType = skillInfo.source_type;
-    const hasArtifacts = skillInfo.latest_version
-      || (skillInfo.dist_tags && skillInfo.dist_tags.length > 0);
+    const hasArtifacts = !!skillInfo.latest_version
+      || (Array.isArray(skillInfo.dist_tags) && skillInfo.dist_tags.length > 0);
 
     if (sourceType && sourceType !== 'registry' && !hasArtifacts) {
-      // Old data: no artifact, web-published skill → use git/http resolver
+      // Legacy web-published skill without OSS artifacts → use git/http resolver
       return this.installFromWebPublished(skillInfo, parsed, targetAgents, {
         ...options,
         registry: registryUrl,

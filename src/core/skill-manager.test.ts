@@ -1558,6 +1558,118 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
     });
   });
 
+  describe('hasArtifacts: OSS artifact takes priority over web-published fallback', () => {
+    it('should use registry flow for github source_type with OSS artifacts (latest_version)', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/github-with-oss',
+        source_type: 'github',
+        source_url: 'https://github.com/user/repo',
+        latest_version: '1.0.0',
+        dist_tags: [{ tag: 'latest', version: '1.0.0' }],
+      });
+
+      // Mock RegistryResolver (standard registry flow)
+      const registryResolver = (manager as unknown as { registryResolver: RegistryResolver })
+        .registryResolver;
+      vi.spyOn(registryResolver, 'resolve').mockResolvedValue({
+        parsed: {
+          scope: '@kanyun',
+          name: 'github-with-oss',
+          version: '1.0.0',
+          fullName: '@kanyun/github-with-oss',
+        },
+        shortName: 'github-with-oss',
+        version: '1.0.0',
+        registryUrl: 'https://registry.example.com/',
+        tarball: Buffer.from('mock tarball'),
+        integrity: 'sha256-mockhash',
+      });
+
+      const mockSkillDir = path.join(tempDir, 'mock-github-oss');
+      fs.mkdirSync(mockSkillDir, { recursive: true });
+      fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), '# Skill');
+      vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
+
+      // Should NOT call installFromWebPublished / installToAgentsFromGit
+      const installFromGitSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installToAgentsFromGit',
+        )
+        .mockResolvedValue({
+          skill: { name: 'github-with-oss', path: '/tmp/skill', version: '1.0.0', source: 'github' },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      const result = await manager.installToAgents('@kanyun/github-with-oss', ['cursor']);
+
+      // Should go through registry flow, NOT git clone
+      expect(installFromGitSpy).not.toHaveBeenCalled();
+      expect(result.skill.name).toBe('github-with-oss');
+    });
+
+    it('should use registry flow for gitlab source_type with dist_tags only', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/gitlab-with-oss',
+        source_type: 'gitlab',
+        source_url: 'https://gitlab.com/org/repo',
+        dist_tags: [{ tag: 'latest', version: '2.0.0' }],
+      });
+
+      const registryResolver = (manager as unknown as { registryResolver: RegistryResolver })
+        .registryResolver;
+      vi.spyOn(registryResolver, 'resolve').mockResolvedValue({
+        parsed: {
+          scope: '@kanyun',
+          name: 'gitlab-with-oss',
+          version: '2.0.0',
+          fullName: '@kanyun/gitlab-with-oss',
+        },
+        shortName: 'gitlab-with-oss',
+        version: '2.0.0',
+        registryUrl: 'https://registry.example.com/',
+        tarball: Buffer.from('mock tarball'),
+        integrity: 'sha256-mockhash',
+      });
+
+      const mockSkillDir = path.join(tempDir, 'mock-gitlab-oss');
+      fs.mkdirSync(mockSkillDir, { recursive: true });
+      fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), '# Skill');
+      vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
+
+      const result = await manager.installToAgents('@kanyun/gitlab-with-oss', ['cursor']);
+
+      expect(result.skill.name).toBe('gitlab-with-oss');
+    });
+
+    it('should fall back to git clone for github source_type without artifacts', async () => {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/github-no-oss',
+        source_type: 'github',
+        source_url: 'https://github.com/user/old-repo',
+        // no latest_version, no dist_tags
+      });
+
+      const installFromGitSpy = vi
+        .spyOn(
+          manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+          'installToAgentsFromGit',
+        )
+        .mockResolvedValue({
+          skill: { name: 'github-no-oss', path: '/tmp/skill', version: '1.0.0', source: 'github' },
+          results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
+        });
+
+      await manager.installToAgents('@kanyun/github-no-oss', ['cursor']);
+
+      // Should fall back to git clone
+      expect(installFromGitSpy).toHaveBeenCalled();
+    });
+  });
+
   describe('skill_path 支持（多技能仓库）', () => {
     it('should construct ref with skill_path for github source_type', async () => {
       const { RegistryClient } = await import('./registry-client.js');
