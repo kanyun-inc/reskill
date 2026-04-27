@@ -4,7 +4,8 @@
  * Tests for detecting and resolving registry skill references
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { RegistryClient } from './registry-client.js';
 import { RegistryResolver } from './registry-resolver.js';
 
 describe('RegistryResolver', () => {
@@ -151,6 +152,70 @@ describe('RegistryResolver', () => {
       // Verify the method signature accepts up to three parameters
       expect(resolver.resolve).toBeDefined();
       expect(resolver.resolve.length).toBeLessThanOrEqual(3);
+    });
+  });
+
+  // ====================================================================
+  // resolve() integrity handling
+  //
+  // The server contract (rush-v2 server-api.spec.md §3.2a/3.2b) explicitly
+  // allows the `x-integrity` header to be an empty string for local-mode
+  // publishes (skills uploaded as multipart tarball via Web UI). The CLI
+  // must tolerate this and skip integrity verification, otherwise install
+  // fails with "Invalid integrity format:" for any local-mode skill.
+  // ====================================================================
+
+  describe('resolve integrity handling', () => {
+    const TEST_REGISTRY = 'https://rush-test.zhenguanyu.com/';
+    const TARBALL_CONTENT = Buffer.from('mock-tarball-bytes');
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function mockClient(integrity: string): void {
+      vi.spyOn(RegistryClient.prototype, 'resolveVersion').mockResolvedValue('1.0.0');
+      vi.spyOn(RegistryClient.prototype, 'downloadSkill').mockResolvedValue({
+        tarball: TARBALL_CONTENT,
+        integrity,
+      });
+    }
+
+    it('should resolve successfully when server returns valid matching integrity', async () => {
+      const expected = RegistryClient.calculateIntegrity(TARBALL_CONTENT);
+      mockClient(expected);
+
+      const resolver = new RegistryResolver();
+      const result = await resolver.resolve('@kanyun/test-skill@1.0.0', TEST_REGISTRY);
+
+      expect(result.shortName).toBe('test-skill');
+      expect(result.version).toBe('1.0.0');
+      expect(result.integrity).toBe(expected);
+      expect(result.tarball).toBe(TARBALL_CONTENT);
+    });
+
+    it('should throw when server returns non-empty integrity that does not match tarball', async () => {
+      mockClient('sha256-tamperedhash000000000000000000000000000000');
+
+      const resolver = new RegistryResolver();
+
+      await expect(resolver.resolve('@kanyun/test-skill@1.0.0', TEST_REGISTRY)).rejects.toThrow(
+        /Integrity verification failed/,
+      );
+    });
+
+    it('should resolve successfully when server returns empty integrity (local-mode publish)', async () => {
+      // Local-mode publishes intentionally store integrity as '' on the server side.
+      // CLI must skip verification rather than throw "Invalid integrity format:".
+      mockClient('');
+
+      const resolver = new RegistryResolver();
+      const result = await resolver.resolve('@kanyun/local-skill@1.0.0', TEST_REGISTRY);
+
+      expect(result.shortName).toBe('local-skill');
+      expect(result.version).toBe('1.0.0');
+      expect(result.integrity).toBe('');
+      expect(result.tarball).toBe(TARBALL_CONTENT);
     });
   });
 });
