@@ -8,6 +8,7 @@
  * Uses RegistryClient to download and verify skills.
  */
 
+import { logger } from '../utils/logger.js';
 import {
   getRegistryUrl,
   getShortName,
@@ -108,7 +109,11 @@ export class RegistryResolver {
    * console.log(result.shortName); // 'planning-with-files'
    * console.log(result.version); // '2.4.5'
    */
-  async resolve(ref: string, overrideRegistryUrl?: string, token?: string): Promise<RegistryResolveResult> {
+  async resolve(
+    ref: string,
+    overrideRegistryUrl?: string,
+    token?: string,
+  ): Promise<RegistryResolveResult> {
     // 1. Parse skill identifier
     const parsed = parseSkillIdentifier(ref);
     const shortName = getShortName(parsed.fullName);
@@ -124,9 +129,20 @@ export class RegistryResolver {
     const { tarball, integrity } = await client.downloadSkill(parsed.fullName, version);
 
     // 5. Verify integrity
-    const isValid = RegistryClient.verifyIntegrity(tarball, integrity);
-    if (!isValid) {
-      throw new Error(`Integrity verification failed for ${ref}`);
+    //
+    // The server contract (rush-v2 server-api.spec.md §3.2a/3.2b) explicitly
+    // returns an empty `x-integrity` header for local-mode publishes — i.e.
+    // skills uploaded as a multipart tarball via the Web UI store integrity
+    // as ''. Skip verification in that case rather than failing install.
+    if (integrity) {
+      const isValid = RegistryClient.verifyIntegrity(tarball, integrity);
+      if (!isValid) {
+        throw new Error(`Integrity verification failed for ${ref}`);
+      }
+    } else {
+      logger.debug(
+        `Server returned empty integrity for ${ref}; skipping verification (expected for local-mode publishes).`,
+      );
     }
 
     return {
