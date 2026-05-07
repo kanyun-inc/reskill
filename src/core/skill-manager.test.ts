@@ -390,16 +390,21 @@ description: Test skill
       it('should return all agent types', () => {
         const types = skillManager.getAllAgentTypes();
         expect(Array.isArray(types)).toBe(true);
-        expect(types.length).toBe(17);
+        expect(types.length).toBe(18);
         expect(types).toContain('cursor');
         expect(types).toContain('claude-code');
+        expect(types).toContain('claude-cowork-3p');
       });
     });
 
     describe('validateAgentTypes', () => {
       it('should validate correct agent types', () => {
-        const result = skillManager.validateAgentTypes(['cursor', 'claude-code']);
-        expect(result.valid).toEqual(['cursor', 'claude-code']);
+        const result = skillManager.validateAgentTypes([
+          'cursor',
+          'claude-code',
+          'claude-cowork-3p',
+        ]);
+        expect(result.valid).toEqual(['cursor', 'claude-code', 'claude-cowork-3p']);
         expect(result.invalid).toEqual([]);
       });
 
@@ -601,9 +606,7 @@ description: ${s.description}
   describe('detectSkillsInRef', () => {
     let repoDir: string;
 
-    function createLocalRepo(
-      structure: 'single' | 'multi' | 'empty',
-    ): string {
+    function createLocalRepo(structure: 'single' | 'multi' | 'empty'): string {
       const repoPath = path.join(repoDir, `detect-${structure}-repo`);
       fs.mkdirSync(repoPath, { recursive: true });
 
@@ -1598,7 +1601,12 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
           'installToAgentsFromGit',
         )
         .mockResolvedValue({
-          skill: { name: 'github-with-oss', path: '/tmp/skill', version: '1.0.0', source: 'github' },
+          skill: {
+            name: 'github-with-oss',
+            path: '/tmp/skill',
+            version: '1.0.0',
+            source: 'github',
+          },
           results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' }]]),
         });
 

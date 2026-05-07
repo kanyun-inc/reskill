@@ -1,14 +1,4 @@
 export type { AgentConfig, AgentType } from './agent-registry.js';
-// Content scanning
-export type {
-  RiskLevel,
-  ScanFinding,
-  ScannerOptions,
-  ScanResult,
-  ScanRule,
-  ScanRuleMatch,
-} from './content-scanner.js';
-export { ContentScanError, ContentScanner, DEFAULT_RULES, maskSafeZones } from './content-scanner.js';
 // Multi-Agent support
 export {
   agents,
@@ -22,7 +12,31 @@ export type { RegistryAuth, ReskillConfig } from './auth-manager.js';
 // Auth management
 export { AuthManager } from './auth-manager.js';
 export { CacheManager } from './cache-manager.js';
+export {
+  CLAUDE_3P_SKILLS_PLUGIN_BASE_ENV,
+  CLAUDE_3P_SKILLS_ROOT_ENV,
+  CLAUDE_COWORK_3P_AGENT,
+  findClaude3pSkillsRoots,
+  getClaude3pSkillPath,
+  getClaude3pSkillsPluginBase,
+  resolveClaude3pSkillsRoot,
+} from './claude-3p-installer.js';
 export { ConfigLoader, DEFAULT_REGISTRIES } from './config-loader.js';
+// Content scanning
+export type {
+  RiskLevel,
+  ScanFinding,
+  ScannerOptions,
+  ScanResult,
+  ScanRule,
+  ScanRuleMatch,
+} from './content-scanner.js';
+export {
+  ContentScanError,
+  ContentScanner,
+  DEFAULT_RULES,
+  maskSafeZones,
+} from './content-scanner.js';
 /**
  * Type representing well-known registry names
  */

@@ -1,13 +1,18 @@
 /**
  * Agent Registry - Multi-Agent configuration definitions
  *
- * Supports global and project-level installation for 17 coding agents
+ * Supports global and project-level installation for 18 coding agents
  * Reference: https://github.com/vercel-labs/add-skill
  */
 
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import {
+  CLAUDE_COWORK_3P_AGENT,
+  getClaude3pSkillsPluginBase,
+  resolveClaude3pSkillsRoot,
+} from './claude-3p-installer.js';
 
 /**
  * Supported Agent types
@@ -16,6 +21,7 @@ export type AgentType =
   | 'amp'
   | 'antigravity'
   | 'claude-code'
+  | 'claude-cowork-3p'
   | 'clawdbot'
   | 'codex'
   | 'cursor'
@@ -80,6 +86,20 @@ export const agents: Record<AgentType, AgentConfig> = {
     globalSkillsDir: join(home, '.claude/skills'),
     detectInstalled: async () => {
       return existsSync(join(home, '.claude'));
+    },
+  },
+  [CLAUDE_COWORK_3P_AGENT]: {
+    name: CLAUDE_COWORK_3P_AGENT,
+    displayName: 'Claude Cowork 3P',
+    skillsDir: '.claude-3p/skills',
+    globalSkillsDir: getClaude3pSkillsPluginBase(),
+    detectInstalled: async () => {
+      try {
+        resolveClaude3pSkillsRoot();
+        return true;
+      } catch {
+        return false;
+      }
     },
   },
   clawdbot: {
@@ -248,12 +268,19 @@ export function isValidAgentType(type: string): type is AgentType {
 
 /**
  * Get Agent's project-level skills directory
+ *
+ * Claude Cowork 3P stores skills under an app-managed account directory. This
+ * throws when that directory cannot be resolved, for example when the app has
+ * not initialized skills or multiple local account roots exist.
  */
 export function getAgentSkillsDir(
   type: AgentType,
   options: { global?: boolean; cwd?: string } = {},
 ): string {
   const config = agents[type];
+  if (type === CLAUDE_COWORK_3P_AGENT) {
+    return join(resolveClaude3pSkillsRoot(), 'skills');
+  }
   if (options.global) {
     return config.globalSkillsDir;
   }

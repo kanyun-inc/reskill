@@ -232,6 +232,7 @@ Skills 默认安装到 `.skills/`，可与任何 Agent 集成：
 | Amp            | `.agents/skills`   |
 | Antigravity    | `.agent/skills`    |
 | Claude Code    | `.claude/skills`   |
+| Claude Cowork 3P（Beta） | App 管理的 `Claude-3p/local-agent-mode-sessions/skills-plugin/<org>/<account>/skills` |
 | Clawdbot       | `skills`           |
 | Codex          | `.codex/skills`    |
 | Cursor         | `.cursor/skills`   |

@@ -13,6 +13,13 @@ import { homedir, platform } from 'node:os';
 import * as path from 'node:path';
 import type { AgentType } from './agent-registry.js';
 import { getAgentConfig } from './agent-registry.js';
+import {
+  CLAUDE_COWORK_3P_AGENT,
+  getClaude3pSkillPath,
+  installClaude3pSkill,
+  listClaude3pSkills,
+  uninstallClaude3pSkill,
+} from './claude-3p-installer.js';
 import { parseSkillMd } from './skill-parser.js';
 
 /**
@@ -250,6 +257,10 @@ export class Installer {
    * Get agent's skill installation path
    */
   getAgentSkillPath(skillName: string, agentType: AgentType): string {
+    if (agentType === CLAUDE_COWORK_3P_AGENT) {
+      return getClaude3pSkillPath(skillName);
+    }
+
     const agent = getAgentConfig(agentType);
     const sanitized = sanitizeName(skillName);
     const agentBase = this.isGlobal ? agent.globalSkillsDir : path.join(this.cwd, agent.skillsDir);
@@ -270,6 +281,10 @@ export class Installer {
     agentType: AgentType,
     options: { mode?: InstallMode } = {},
   ): Promise<InstallResult> {
+    if (agentType === CLAUDE_COWORK_3P_AGENT) {
+      return installClaude3pSkill(sourcePath, skillName, { mode: options.mode });
+    }
+
     const agent = getAgentConfig(agentType);
     const installMode = options.mode || 'symlink';
     const sanitized = sanitizeName(skillName);
@@ -389,8 +404,12 @@ export class Installer {
    * Check if skill is installed to specified agent
    */
   isInstalled(skillName: string, agentType: AgentType): boolean {
-    const skillPath = this.getAgentSkillPath(skillName, agentType);
-    return fs.existsSync(skillPath);
+    try {
+      const skillPath = this.getAgentSkillPath(skillName, agentType);
+      return fs.existsSync(skillPath);
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -405,6 +424,14 @@ export class Installer {
    * Uninstall skill from specified agent
    */
   uninstallFromAgent(skillName: string, agentType: AgentType): boolean {
+    if (agentType === CLAUDE_COWORK_3P_AGENT) {
+      try {
+        return uninstallClaude3pSkill(skillName);
+      } catch {
+        return false;
+      }
+    }
+
     const skillPath = this.getAgentSkillPath(skillName, agentType);
 
     if (!fs.existsSync(skillPath)) {
@@ -444,6 +471,14 @@ export class Installer {
    * Get all skills installed to specified agent
    */
   listInstalledSkills(agentType: AgentType): string[] {
+    if (agentType === CLAUDE_COWORK_3P_AGENT) {
+      try {
+        return listClaude3pSkills();
+      } catch {
+        return [];
+      }
+    }
+
     const agent = getAgentConfig(agentType);
     const skillsDir = this.isGlobal ? agent.globalSkillsDir : path.join(this.cwd, agent.skillsDir);
 

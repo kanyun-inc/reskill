@@ -4,12 +4,14 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getShortName } from '../utils/registry-scope.js';
 import type { AgentType } from './agent-registry.js';
+import { CLAUDE_3P_SKILLS_ROOT_ENV } from './claude-3p-installer.js';
 import { Installer } from './installer.js';
 
 describe('Installer', () => {
   let tempDir: string;
   let installer: Installer;
   let sourceDir: string;
+  let originalClaude3pRoot: string | undefined;
 
   beforeEach(() => {
     tempDir = mkdtempSync(path.join(tmpdir(), 'installer-test-'));
@@ -33,9 +35,15 @@ This is test content.
 
     // Create additional files
     writeFileSync(path.join(sourceDir, 'helper.md'), '# Helper file');
+    originalClaude3pRoot = process.env[CLAUDE_3P_SKILLS_ROOT_ENV];
   });
 
   afterEach(() => {
+    if (originalClaude3pRoot === undefined) {
+      delete process.env[CLAUDE_3P_SKILLS_ROOT_ENV];
+    } else {
+      process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = originalClaude3pRoot;
+    }
     rmSync(tempDir, { recursive: true, force: true });
   });
 
@@ -122,6 +130,30 @@ This is test content.
         expect(result.success).toBe(true);
         expect(existsSync(result.path)).toBe(true);
       }
+    });
+
+    it('should install to Claude Cowork 3P and update its manifest', async () => {
+      const skillsRoot = path.join(tempDir, 'claude-3p', 'org', 'account');
+      mkdirSync(path.join(skillsRoot, 'skills'), { recursive: true });
+      writeFileSync(path.join(skillsRoot, 'manifest.json'), '{"skills":[]}\n');
+      process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = skillsRoot;
+
+      const result = await installer.installForAgent(sourceDir, 'test-skill', 'claude-cowork-3p', {
+        mode: 'symlink',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe('copy');
+      expect(result.path).toBe(path.join(skillsRoot, 'skills', 'test-skill'));
+      expect(result.symlinkFailed).toBeUndefined();
+      expect(existsSync(path.join(result.path, 'SKILL.md'))).toBe(true);
+
+      const manifest = JSON.parse(readFileSync(path.join(skillsRoot, 'manifest.json'), 'utf-8'));
+      expect(manifest.skills[0]).toMatchObject({
+        skillId: 'test-skill',
+        name: 'test-skill',
+        enabled: true,
+      });
     });
 
     it('should fail when source does not exist', async () => {
@@ -270,6 +302,17 @@ This is test content.
       expect(result).toBe(false);
     });
 
+    it('should reject unsafe Claude Cowork 3P names instead of sanitizing them', () => {
+      const skillsRoot = path.join(tempDir, 'claude-3p', 'org', 'account');
+      mkdirSync(path.join(skillsRoot, 'skills', 'unnamed-skill'), { recursive: true });
+      writeFileSync(path.join(skillsRoot, 'manifest.json'), '{"skills":[]}\n');
+      process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = skillsRoot;
+
+      expect(installer.isInstalled('..', 'claude-cowork-3p')).toBe(false);
+      expect(installer.uninstallFromAgent('..', 'claude-cowork-3p')).toBe(false);
+      expect(existsSync(path.join(skillsRoot, 'skills', 'unnamed-skill'))).toBe(true);
+    });
+
     it('should only uninstall from specified agent', async () => {
       // Install to multiple agents
       await installer.installToAgents(sourceDir, 'test-skill', ['cursor', 'claude-code'], {
@@ -340,6 +383,15 @@ This is test content.
       expect(cursorSkills).not.toContain('claude-skill');
       expect(claudeSkills).toContain('claude-skill');
       expect(claudeSkills).not.toContain('cursor-skill');
+    });
+
+    it('should list Claude Cowork 3P skills from its app-managed directory', async () => {
+      const skillsRoot = path.join(tempDir, 'claude-3p', 'org', 'account');
+      mkdirSync(path.join(skillsRoot, 'skills', 'test-skill'), { recursive: true });
+      writeFileSync(path.join(skillsRoot, 'manifest.json'), '{"skills":[]}\n');
+      process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = skillsRoot;
+
+      expect(installer.listInstalledSkills('claude-cowork-3p')).toEqual(['test-skill']);
     });
   });
 
