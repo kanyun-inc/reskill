@@ -1,6 +1,7 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   type AgentType,
   agents,
@@ -10,12 +11,23 @@ import {
   getAllAgentTypes,
   isValidAgentType,
 } from './agent-registry.js';
+import { CLAUDE_3P_SKILLS_ROOT_ENV } from './claude-3p-installer.js';
 
 describe('agent-registry', () => {
+  const originalClaude3pRoot = process.env[CLAUDE_3P_SKILLS_ROOT_ENV];
+
+  afterEach(() => {
+    if (originalClaude3pRoot === undefined) {
+      delete process.env[CLAUDE_3P_SKILLS_ROOT_ENV];
+    } else {
+      process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = originalClaude3pRoot;
+    }
+  });
+
   describe('agents config', () => {
-    it('should have 17 agents defined', () => {
+    it('should have 18 agents defined', () => {
       const agentKeys = Object.keys(agents);
-      expect(agentKeys.length).toBe(17);
+      expect(agentKeys.length).toBe(18);
     });
 
     it('should have all expected agents', () => {
@@ -23,6 +35,7 @@ describe('agent-registry', () => {
         'amp',
         'antigravity',
         'claude-code',
+        'claude-cowork-3p',
         'clawdbot',
         'codex',
         'cursor',
@@ -81,6 +94,15 @@ describe('agent-registry', () => {
       expect(agents['claude-code'].globalSkillsDir).toBe(path.join(home, '.claude/skills'));
     });
 
+    it('claude-cowork-3p agent should have correct configuration', () => {
+      expect(agents['claude-cowork-3p'].name).toBe('claude-cowork-3p');
+      expect(agents['claude-cowork-3p'].displayName).toBe('Claude Cowork 3P');
+      expect(agents['claude-cowork-3p'].skillsDir).toBe('.claude-3p/skills');
+      expect(agents['claude-cowork-3p'].globalSkillsDir).toContain(
+        path.join('Claude-3p', 'local-agent-mode-sessions', 'skills-plugin'),
+      );
+    });
+
     it('github-copilot agent should have correct configuration', () => {
       const home = os.homedir();
       expect(agents['github-copilot'].name).toBe('github-copilot');
@@ -104,6 +126,7 @@ describe('agent-registry', () => {
     it('should return true for valid agent types', () => {
       expect(isValidAgentType('cursor')).toBe(true);
       expect(isValidAgentType('claude-code')).toBe(true);
+      expect(isValidAgentType('claude-cowork-3p')).toBe(true);
       expect(isValidAgentType('github-copilot')).toBe(true);
       expect(isValidAgentType('windsurf')).toBe(true);
       expect(isValidAgentType('amp')).toBe(true);
@@ -141,9 +164,10 @@ describe('agent-registry', () => {
     it('should return array of all agent types', () => {
       const types = getAllAgentTypes();
       expect(Array.isArray(types)).toBe(true);
-      expect(types.length).toBe(17);
+      expect(types.length).toBe(18);
       expect(types).toContain('cursor');
       expect(types).toContain('claude-code');
+      expect(types).toContain('claude-cowork-3p');
       expect(types).toContain('github-copilot');
     });
   });
@@ -175,6 +199,20 @@ describe('agent-registry', () => {
       expect(getAgentSkillsDir('windsurf', { global: true })).toBe(
         path.join(home, '.codeium/windsurf/skills'),
       );
+    });
+
+    it('should return Claude Cowork 3P app-managed skills directory', () => {
+      const tempDir = mkdtempSync(path.join(os.tmpdir(), 'claude-3p-agent-registry-test-'));
+      const skillsRoot = path.join(tempDir, 'skills-plugin', 'org', 'account');
+      mkdirSync(path.join(skillsRoot, 'skills'), { recursive: true });
+      writeFileSync(path.join(skillsRoot, 'manifest.json'), '{"skills":[]}\n');
+      process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = skillsRoot;
+
+      try {
+        expect(getAgentSkillsDir('claude-cowork-3p')).toBe(path.join(skillsRoot, 'skills'));
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 

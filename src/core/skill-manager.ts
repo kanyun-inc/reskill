@@ -19,11 +19,11 @@ import {
 import { parseGitUrl } from '../utils/git.js';
 import { logger } from '../utils/logger.js';
 import {
-  type ScopeRegistries,
   getRegistryUrl,
   getScopeForRegistry,
   getShortName,
   parseSkillIdentifier,
+  type ScopeRegistries,
 } from '../utils/registry-scope.js';
 import {
   type AgentType,
@@ -32,6 +32,7 @@ import {
   isValidAgentType,
 } from './agent-registry.js';
 import { CacheManager } from './cache-manager.js';
+import { CLAUDE_COWORK_3P_AGENT, getClaude3pSkillPath } from './claude-3p-installer.js';
 import { ConfigLoader, DEFAULT_REGISTRIES } from './config-loader.js';
 import { GitResolver } from './git-resolver.js';
 import { HttpResolver } from './http-resolver.js';
@@ -751,6 +752,17 @@ export class SkillManager {
     const canonicalDir = this.getCanonicalSkillsDir();
     const installed: AgentType[] = [];
     for (const [type, config] of Object.entries(agents)) {
+      if (type === CLAUDE_COWORK_3P_AGENT) {
+        try {
+          if (exists(getClaude3pSkillPath(skillName))) {
+            installed.push(type as AgentType);
+          }
+        } catch {
+          // Claude Cowork 3P keeps skills under an app-managed account directory.
+        }
+        continue;
+      }
+
       const agentBase = this.isGlobal
         ? config.globalSkillsDir
         : path.join(this.projectRoot, config.skillsDir);
@@ -921,10 +933,7 @@ export class SkillManager {
    */
   async detectSkillsInRef(
     ref: string,
-  ): Promise<
-    | { type: 'single' }
-    | { type: 'multi'; skills: ParsedSkillWithPath[] }
-  > {
+  ): Promise<{ type: 'single' } | { type: 'multi'; skills: ParsedSkillWithPath[] }> {
     // Only Git refs can be multi-skill directories
     if (this.isRegistrySource(ref) || this.isHttpSource(ref)) {
       return { type: 'single' };
@@ -1378,8 +1387,9 @@ export class SkillManager {
     // regardless of source_type. Legacy web-published skills without artifacts fall back
     // to git clone / HTTP download via installFromWebPublished.
     const sourceType = skillInfo.source_type;
-    const hasArtifacts = !!skillInfo.latest_version
-      || (Array.isArray(skillInfo.dist_tags) && skillInfo.dist_tags.length > 0);
+    const hasArtifacts =
+      !!skillInfo.latest_version ||
+      (Array.isArray(skillInfo.dist_tags) && skillInfo.dist_tags.length > 0);
 
     if (sourceType && sourceType !== 'registry' && !hasArtifacts) {
       // Legacy web-published skill without OSS artifacts → use git/http resolver

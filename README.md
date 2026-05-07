@@ -232,6 +232,7 @@ Skills are installed to `.skills/` by default and can be integrated with any age
 | Amp            | `.agents/skills`   |
 | Antigravity    | `.agent/skills`    |
 | Claude Code    | `.claude/skills`   |
+| Claude Cowork 3P (Beta) | App-managed `Claude-3p/local-agent-mode-sessions/skills-plugin/<org>/<account>/skills` |
 | Clawdbot       | `skills`           |
 | Codex          | `.codex/skills`    |
 | Cursor         | `.cursor/skills`   |

@@ -2,7 +2,7 @@
  * reskill - AI Skills Package Manager
  *
  * Git-based skills management for AI agents
- * Supports 17+ coding agents: Cursor, Claude Code, GitHub Copilot, etc.
+ * Supports 18+ coding agents: Cursor, Claude Code, Claude Cowork 3P, GitHub Copilot, etc.
  */
 
 // Core exports
