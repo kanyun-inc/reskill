@@ -196,4 +196,13 @@ description: Unsafe skill
       ),
     ).toEqual([]);
   });
+
+  it('reports copy mode when installation fails after requesting symlink mode', () => {
+    writeFileSync(path.join(skillsRoot, 'manifest.json'), '{broken');
+
+    const result = installClaude3pSkill(sourceDir, 'fallback-skill', { mode: 'symlink' });
+
+    expect(result.success).toBe(false);
+    expect(result.mode).toBe('copy');
+  });
 });

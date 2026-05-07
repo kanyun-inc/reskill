@@ -302,6 +302,17 @@ This is test content.
       expect(result).toBe(false);
     });
 
+    it('should reject unsafe Claude Cowork 3P names instead of sanitizing them', () => {
+      const skillsRoot = path.join(tempDir, 'claude-3p', 'org', 'account');
+      mkdirSync(path.join(skillsRoot, 'skills', 'unnamed-skill'), { recursive: true });
+      writeFileSync(path.join(skillsRoot, 'manifest.json'), '{"skills":[]}\n');
+      process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = skillsRoot;
+
+      expect(installer.isInstalled('..', 'claude-cowork-3p')).toBe(false);
+      expect(installer.uninstallFromAgent('..', 'claude-cowork-3p')).toBe(false);
+      expect(existsSync(path.join(skillsRoot, 'skills', 'unnamed-skill'))).toBe(true);
+    });
+
     it('should only uninstall from specified agent', async () => {
       // Install to multiple agents
       await installer.installToAgents(sourceDir, 'test-skill', ['cursor', 'claude-code'], {

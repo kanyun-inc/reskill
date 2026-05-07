@@ -303,9 +303,8 @@ function removeFromManifest(manifestPath: string, skillId: string): void {
 export function installClaude3pSkill(
   sourcePath: string,
   fallbackName: string,
-  options: InstallOptions = {},
+  _options: InstallOptions = {},
 ): InstallResult {
-  const requestedMode = options.mode ?? 'symlink';
   const installMode = 'copy';
   let manifestPath: string | undefined;
   let manifestBackupPath: string | undefined;
@@ -393,7 +392,7 @@ export function installClaude3pSkill(
     return {
       success: false,
       path: '',
-      mode: requestedMode,
+      mode: installMode,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }

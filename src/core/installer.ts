@@ -258,7 +258,7 @@ export class Installer {
    */
   getAgentSkillPath(skillName: string, agentType: AgentType): string {
     if (agentType === CLAUDE_COWORK_3P_AGENT) {
-      return getClaude3pSkillPath(sanitizeName(skillName));
+      return getClaude3pSkillPath(skillName);
     }
 
     const agent = getAgentConfig(agentType);
@@ -426,7 +426,7 @@ export class Installer {
   uninstallFromAgent(skillName: string, agentType: AgentType): boolean {
     if (agentType === CLAUDE_COWORK_3P_AGENT) {
       try {
-        return uninstallClaude3pSkill(sanitizeName(skillName));
+        return uninstallClaude3pSkill(skillName);
       } catch {
         return false;
       }
