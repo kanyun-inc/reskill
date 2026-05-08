@@ -120,7 +120,7 @@ function handleCompletion(): void {
         { name: '--agent', description: 'Specify target agents' },
         { name: '-y', description: 'Skip confirmation' },
         { name: '--yes', description: 'Skip confirmation' },
-        { name: '--all', description: 'Install to all agents' },
+        { name: '--all', description: 'Install to all detected agents' },
       ];
       tabtab.log(options);
       return;

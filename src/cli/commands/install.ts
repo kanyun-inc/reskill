@@ -128,10 +128,28 @@ async function resolveTargetAgents(
 ): Promise<AgentType[]> {
   const { options, allAgentTypes, storedAgents, hasStoredAgents, isReinstallAll } = ctx;
 
-  // Priority 1: --all flag
+  // Priority 1: --all flag — install to every detected agent on this machine.
+  // Falls back to all known agent types only when nothing is detected, so that
+  // agents that cannot exist on the current platform (e.g. Claude Cowork 3P on
+  // Linux) are skipped instead of producing guaranteed failures.
   if (options.all) {
-    p.log.info(`Installing to all ${chalk.cyan(allAgentTypes.length)} agents`);
-    return allAgentTypes;
+    spinner.start('Detecting installed agents...');
+    const installedAgents = await detectInstalledAgents();
+    spinner.stop(
+      `Detected ${chalk.green(installedAgents.length)} agent${installedAgents.length !== 1 ? 's' : ''}`,
+    );
+
+    if (installedAgents.length === 0) {
+      p.log.info(
+        `No agents detected, installing to all ${chalk.cyan(allAgentTypes.length)} known agents`,
+      );
+      return allAgentTypes;
+    }
+
+    p.log.info(
+      `Installing to ${chalk.cyan(installedAgents.length)} detected agent(s): ${formatAgentNames(installedAgents)}`,
+    );
+    return installedAgents;
   }
 
   // Priority 2: -a/--agent flag
@@ -184,7 +202,7 @@ async function detectAndPromptAgents(
   // No agents detected
   if (installedAgents.length === 0) {
     if (skipConfirm) {
-      p.log.info('Installing to all agents (none detected)');
+      p.log.info('Installing to all known agents (none detected)');
       return allAgentTypes;
     }
     return await promptAgentSelection(
@@ -960,7 +978,7 @@ export const installCommand = new Command('install')
   .option('-a, --agent <agents...>', 'Specify target agents (e.g., cursor, claude-code)')
   .option('--mode <mode>', 'Installation mode: symlink or copy')
   .option('-y, --yes', 'Skip confirmation prompts')
-  .option('--all', 'Install to all agents (implies -y -g)')
+  .option('--all', 'Install to all detected agents (implies -y -g)')
   .option(
     '-s, --skill <names...>',
     'Select specific skill(s) by name from a multi-skill repository',

@@ -153,7 +153,7 @@ reskill install github:user/skill1 github:user/skill2@v1.0.0 gitlab:team/skill3
 | `-a, --agent <agents...>` | auto-detect | Specify target agents |
 | `--mode <mode>` | `symlink` | Installation mode: `symlink` or `copy` |
 | `-y, --yes` | `false` | Skip confirmation prompts |
-| `--all` | `false` | Install to all agents (implies `-y -g`) |
+| `--all` | `false` | Install to all detected agents (implies `-y -g`). Falls back to all known agents if none are detected. |
 | `-s, --skill <names...>` | - | Select specific skill(s) by name from a multi-skill repository (Git/HTTP only) |
 | `--list` | `false` | With a single repo ref: list available skills in the repository without installing |
 | `-r, --registry <url>` | - | Registry URL override for registry-based installs |
@@ -182,7 +182,7 @@ Skill discovery scans the cached repo for `SKILL.md` files (priority dirs: `skil
 
 ### Agent Resolution Priority
 
-1. `--all` flag → install to all known agents
+1. `--all` flag → install to all detected agents; falls back to all known agents only when none are detected
 2. `-a, --agent` flag → use specified agents
 3. Reinstall all (no skill arg) + stored agents → use saved `targetAgents`
 4. Auto-detect installed agents → prompt if multiple

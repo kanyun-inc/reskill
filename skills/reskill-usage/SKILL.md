@@ -98,7 +98,7 @@ Run `reskill <command> --help` for complete options and detailed usage.
 | `-g, --global`            | `install`, `uninstall`, `list`                                | Install/manage skills globally (user directory)               |
 | `-a, --agent <agents...>` | `install`                                                     | Specify target agents (e.g., `cursor`, `claude-code`)         |
 | `--mode <mode>`           | `install`                                                     | Installation mode: `symlink` (default) or `copy`              |
-| `--all`                   | `install`                                                     | Install to all agents                                         |
+| `--all`                   | `install`                                                     | Install to all detected agents                                |
 | `-y, --yes`               | `install`, `uninstall`, `publish`                             | Skip confirmation prompts                                     |
 | `-f, --force`             | `install`                                                     | Force reinstall even if already installed                     |
 | `-s, --skill <names...>`  | `install`                                                     | Select specific skill(s) by name from a multi-skill repo      |
