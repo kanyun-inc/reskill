@@ -1633,7 +1633,8 @@ export class SkillManager {
     const optionsWithContext = { ...options, registryContext };
 
     // Save custom registry to skills.json.registries (for reinstall without lock file)
-    if (!this.isEffectivelyGlobal(targetAgents) && options.registry) {
+    const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+    if (!effectivelyGlobal && options.registry) {
       const registryName = this.deriveRegistryName(options.registry);
       if (registryName) {
         this.config.ensureExists();
@@ -1887,13 +1888,14 @@ export class SkillManager {
 
     const results = installer.uninstallFromAgents(name, targetAgents);
 
-    // Remove from lock file (project mode only)
-    if (!this.isGlobal) {
+    // Remove from lock file (project mode only, skip for effectively-global installs)
+    const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+    if (!effectivelyGlobal) {
       this.lockManager.remove(name);
     }
 
-    // Remove from skills.json (project mode only)
-    if (!this.isGlobal && this.config.exists()) {
+    // Remove from skills.json (project mode only, skip for effectively-global installs)
+    if (!effectivelyGlobal && this.config.exists()) {
       this.config.removeSkill(name);
     }
 

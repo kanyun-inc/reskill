@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { type AgentType, agents, detectInstalledAgents } from '../../core/agent-registry.js';
 import { AuthManager } from '../../core/auth-manager.js';
+import { CLAUDE_COWORK_3P_AGENT } from '../../core/claude-3p-installer.js';
 import { ConfigLoader } from '../../core/config-loader.js';
 import type { InstallMode } from '../../core/installer.js';
 import { SkillManager } from '../../core/skill-manager.js';
@@ -251,7 +252,10 @@ async function promptAgentSelection(
 /**
  * Resolve installation scope (global vs project)
  */
-async function resolveInstallScope(ctx: InstallContext): Promise<boolean> {
+async function resolveInstallScope(
+  ctx: InstallContext,
+  targetAgents: AgentType[],
+): Promise<boolean> {
   const { options, isReinstallAll, skipConfirm } = ctx;
 
   // Explicit --global flag
@@ -259,9 +263,20 @@ async function resolveInstallScope(ctx: InstallContext): Promise<boolean> {
     return options.global;
   }
 
-  // Skip prompt for reinstall-all (always project scope)
+  // Skip prompt for reinstall-all (always project scope).
+  // Must be checked before the claude-cowork-3p override to avoid
+  // "Cannot install all skills globally" when 3p is the only detected agent.
   if (isReinstallAll) {
     return false;
+  }
+
+  // claude-cowork-3p always installs globally — skip prompt
+  if (
+    targetAgents.length > 0 &&
+    targetAgents.every((a) => a === CLAUDE_COWORK_3P_AGENT)
+  ) {
+    p.log.info('Using global scope (claude-cowork-3p is always global)');
+    return true;
   }
 
   // Skip prompt if --yes
@@ -301,12 +316,23 @@ async function resolveInstallScope(ctx: InstallContext): Promise<boolean> {
 /**
  * Resolve installation mode (symlink vs copy)
  */
-async function resolveInstallMode(ctx: InstallContext): Promise<InstallMode> {
+async function resolveInstallMode(
+  ctx: InstallContext,
+  targetAgents: AgentType[],
+): Promise<InstallMode> {
   const { options, storedMode, isReinstallAll, skipConfirm } = ctx;
 
   // Priority 1: CLI --mode option
   if (options.mode) {
     return options.mode;
+  }
+
+  // claude-cowork-3p always uses copy mode — skip prompt
+  if (
+    targetAgents.length > 0 &&
+    targetAgents.every((a) => a === CLAUDE_COWORK_3P_AGENT)
+  ) {
+    return 'copy';
   }
 
   // Priority 2: Reinstall all with stored mode
@@ -1026,7 +1052,7 @@ export const installCommand = new Command('install')
         targetAgents = await resolveTargetAgents(ctx, spinner);
 
         // Step 2: Resolve installation scope
-        installGlobally = await resolveInstallScope(ctx);
+        installGlobally = await resolveInstallScope(ctx, targetAgents);
 
         // Validate: Cannot install all skills globally
         if (ctx.isReinstallAll && installGlobally) {
@@ -1035,7 +1061,7 @@ export const installCommand = new Command('install')
         }
 
         // Step 3: Resolve installation mode
-        installMode = await resolveInstallMode(ctx);
+        installMode = await resolveInstallMode(ctx, targetAgents);
       }
 
       // Step 4: Execute installation
