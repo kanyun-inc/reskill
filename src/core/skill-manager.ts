@@ -32,7 +32,11 @@ import {
   isValidAgentType,
 } from './agent-registry.js';
 import { CacheManager } from './cache-manager.js';
-import { CLAUDE_COWORK_3P_AGENT, getClaude3pSkillPath } from './claude-3p-installer.js';
+import {
+  CLAUDE_COWORK_3P_AGENT,
+  getClaude3pSkillPath,
+  listClaude3pSkills,
+} from './claude-3p-installer.js';
 import { ConfigLoader, DEFAULT_REGISTRIES } from './config-loader.js';
 import { GitResolver } from './git-resolver.js';
 import { HttpResolver } from './http-resolver.js';
@@ -695,9 +699,14 @@ export class SkillManager {
   /**
    * List installed skills
    *
-   * Checks both canonical (.agents/skills/) and legacy (.skills/) locations.
+   * When `agent` is specified, lists skills installed to that specific agent.
+   * Otherwise checks both canonical (.agents/skills/) and legacy (.skills/) locations.
    */
-  list(): InstalledSkill[] {
+  list(options?: { agent?: AgentType }): InstalledSkill[] {
+    if (options?.agent) {
+      return this.listByAgent(options.agent);
+    }
+
     const skills: InstalledSkill[] = [];
     const seenNames = new Set<string>();
 
@@ -749,6 +758,52 @@ export class SkillManager {
           skills.push(skill);
           seenNames.add(name);
         }
+      }
+    }
+
+    // In global mode, also include claude-cowork-3p skills (always global)
+    if (this.isGlobal) {
+      try {
+        for (const name of listClaude3pSkills()) {
+          if (seenNames.has(name)) {
+            continue;
+          }
+          const skillPath = getClaude3pSkillPath(name);
+          const skill = this.getInstalledSkillFromPath(name, skillPath);
+          if (skill) {
+            skills.push(skill);
+            seenNames.add(name);
+          }
+        }
+      } catch {
+        // Claude Cowork 3P not configured or accessible — skip silently
+      }
+    }
+
+    return skills;
+  }
+
+  /**
+   * List skills installed to a specific agent
+   */
+  private listByAgent(agent: AgentType): InstalledSkill[] {
+    const installer = new Installer({
+      cwd: this.projectRoot,
+      global: this.isGlobal,
+    });
+
+    const skillNames = installer.listInstalledSkills(agent);
+    const skills: InstalledSkill[] = [];
+
+    for (const name of skillNames) {
+      try {
+        const skillPath = installer.getAgentSkillPath(name, agent);
+        const skill = this.getInstalledSkillFromPath(name, skillPath);
+        if (skill) {
+          skills.push(skill);
+        }
+      } catch {
+        // Skip skills whose paths cannot be resolved (e.g. claude-3p not configured)
       }
     }
 

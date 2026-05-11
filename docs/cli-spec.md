@@ -346,14 +346,19 @@ reskill list [options]
 |--------|---------|-------------|
 | `-j, --json` | `false` | Output as JSON |
 | `-g, --global` | `false` | List globally installed skills |
+| `-a, --agent <agent>` | - | List skills installed to a specific agent |
 
 ### Behavior
 
 | Scenario | Expected Behavior | Exit Code |
 |----------|-------------------|-----------|
-| Skills exist | Display table with Name, Version, Source | `0` |
+| Skills exist | Display table with Name, Version, Source, Agents | `0` |
 | No skills | Info: "No skills installed" | `0` |
 | `--json` | Output JSON array | `0` |
+| `--global` | List globally installed skills, including claude-cowork-3p | `0` |
+| `-a <agent>` | List skills in the specified agent's directory | `0` |
+| `-a claude-cowork-3p` | List skills in Claude Cowork 3P (implicitly global) | `0` |
+| `-a <invalid>` | Error: "Invalid agent" | `1` |
 
 ### Output
 

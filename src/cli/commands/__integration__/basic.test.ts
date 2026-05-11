@@ -272,6 +272,46 @@ describe('CLI Integration: list', () => {
     expect(stdout).toContain('Agents');
     expect(stdout).toContain('Cursor');
   });
+
+  it('should list skills filtered by agent with -a flag', () => {
+    // Create skill in cursor agent directory
+    const cursorDir = path.join(tempDir, '.cursor', 'skills', 'cursor-skill');
+    fs.mkdirSync(cursorDir, { recursive: true });
+    fs.writeFileSync(path.join(cursorDir, 'SKILL.md'), '# Cursor Skill');
+
+    // Create skill in claude-code agent directory (should not appear)
+    const claudeDir = path.join(tempDir, '.claude', 'skills', 'claude-skill');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.writeFileSync(path.join(claudeDir, 'SKILL.md'), '# Claude Skill');
+
+    const { stdout, exitCode } = runCli('list -a cursor', tempDir);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('cursor-skill');
+    expect(stdout).not.toContain('claude-skill');
+    expect(stdout).toContain('Cursor');
+  });
+
+  it('should show no skills message for agent with no skills', () => {
+    const { stdout, exitCode } = runCli('list -a codex', tempDir);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('No skills installed for Codex');
+  });
+
+  it('should exit with error for invalid agent', () => {
+    const { stderr, exitCode } = runCli('list -a invalid-agent', tempDir);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('Invalid agent');
+  });
+
+  it('should show agent display name in header with -a flag', () => {
+    const cursorDir = path.join(tempDir, '.cursor', 'skills', 'my-skill');
+    fs.mkdirSync(cursorDir, { recursive: true });
+    fs.writeFileSync(path.join(cursorDir, 'SKILL.md'), '# My Skill');
+
+    const { stdout, exitCode } = runCli('list -a cursor', tempDir);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('Installed Skills (Cursor)');
+  });
 });
 
 // ============================================================================
