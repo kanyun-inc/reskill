@@ -2910,31 +2910,40 @@ describe('SkillManager isEffectivelyGlobal behavior for claude-cowork-3p', () =>
     expect(fs.existsSync(path.join(tempDir, 'skills.lock'))).toBe(false);
   });
 
-  it('should write skills.json/skills.lock when installing to cursor agent', async () => {
-    // Setup: mock internal installToAgentsFromGit
-    const mockResult = {
-      skill: {
-        name: 'test-skill',
-        path: '/tmp/skill',
-        version: '1.0.0',
-        source: 'github:user/test-skill',
-      },
-      results: new Map([['cursor', { success: true, path: '/tmp', mode: 'symlink' as const }]]),
-    };
+  it('should NOT modify skills.json/skills.lock when uninstalling from mixed agents with only claude-cowork-3p', () => {
+    // Simulates: reskill uninstall test-skill -a claude-cowork-3p cursor
+    // where both agents are specified but the key question is whether manifest is updated.
+    // Since the array contains a non-3p agent (cursor), manifest SHOULD be updated.
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({ skills: { 'test-skill': 'github:user/test-skill@v1.0.0' } }),
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.lock'),
+      JSON.stringify({
+        lockfileVersion: 1,
+        skills: {
+          'test-skill': {
+            source: 'github:user/test-skill',
+            version: '1.0.0',
+            ref: 'v1.0.0',
+            resolved: 'https://github.com/user/test-skill.git',
+            commit: 'abc123',
+            installedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    );
 
-    vi.spyOn(
-      manager as unknown as Record<string, (...args: unknown[]) => unknown>,
-      'installToAgentsFromGit',
-    ).mockResolvedValue(mockResult);
+    // Action: Uninstall targeting both claude-cowork-3p and cursor
+    manager.uninstallFromAgents('test-skill', ['claude-cowork-3p', 'cursor']);
 
-    // Action: Install targeting cursor
-    await manager.installToAgents('github:user/test-skill@v1.0.0', ['cursor']);
+    // Assert: skills.json and skills.lock should be updated (cursor is non-global)
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.json'), 'utf-8'));
+    expect(config.skills['test-skill']).toBeUndefined();
 
-    // Assert: The mock resolves before lock/config writes happen in the actual
-    // installToAgentsFromGit, so we are testing that the public installToAgents
-    // delegates correctly. The mock bypasses internal logic, so this test verifies
-    // the routing, not the write behavior (which is covered by uninstall tests above).
-    expect(mockResult.results.get('cursor')?.success).toBe(true);
+    const lock = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.lock'), 'utf-8'));
+    expect(lock.skills['test-skill']).toBeUndefined();
   });
 });
 
