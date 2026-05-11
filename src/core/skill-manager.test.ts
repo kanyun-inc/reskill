@@ -2849,7 +2849,7 @@ describe('SkillManager isEffectivelyGlobal behavior for claude-cowork-3p', () =>
     expect(lock.skills['test-skill']).toBeDefined();
   });
 
-  it('should modify skills.json/skills.lock when uninstalling from mixed agents including non-3p', () => {
+  it('should modify skills.json/skills.lock when uninstalling from a non-3p agent', () => {
     // Setup: Create skills.json and skills.lock
     fs.writeFileSync(
       path.join(tempDir, 'skills.json'),
@@ -2886,9 +2886,9 @@ describe('SkillManager isEffectivelyGlobal behavior for claude-cowork-3p', () =>
   it('should NOT write skills.json/skills.lock when installing to only claude-cowork-3p', async () => {
     // Note: This test mocks installToAgentsFromGit entirely, so it only verifies
     // the dispatch path (installToAgents delegates to the private method without
-    // any manifest writes of its own). The manifest-write guard inside
-    // installToAgentsFromGit is covered by the uninstall tests below which
-    // exercise the real isEffectivelyGlobal logic without network dependencies.
+    // any manifest writes of its own). The isEffectivelyGlobal method itself is
+    // exercised by the uninstall tests below, which verify the core logic without
+    // network dependencies.
     const mockResult = {
       skill: {
         name: 'test-skill',
@@ -2914,7 +2914,7 @@ describe('SkillManager isEffectivelyGlobal behavior for claude-cowork-3p', () =>
     expect(fs.existsSync(path.join(tempDir, 'skills.lock'))).toBe(false);
   });
 
-  it('should modify skills.json/skills.lock when uninstalling from mixed agents including non-3p', () => {
+  it('should modify skills.json/skills.lock when uninstalling from both claude-cowork-3p and non-3p agents', () => {
     // Simulates: reskill uninstall test-skill -a claude-cowork-3p cursor
     // Mixed agents include a non-3p agent, so manifest SHOULD be updated.
     fs.writeFileSync(

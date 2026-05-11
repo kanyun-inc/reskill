@@ -263,6 +263,13 @@ async function resolveInstallScope(
     return options.global;
   }
 
+  // Skip prompt for reinstall-all (always project scope).
+  // Must be checked before the claude-cowork-3p override to avoid
+  // "Cannot install all skills globally" when 3p is the only detected agent.
+  if (isReinstallAll) {
+    return false;
+  }
+
   // claude-cowork-3p always installs globally — skip prompt
   if (
     targetAgents.length > 0 &&
@@ -270,11 +277,6 @@ async function resolveInstallScope(
   ) {
     p.log.info('Using global scope (claude-cowork-3p is always global)');
     return true;
-  }
-
-  // Skip prompt for reinstall-all (always project scope)
-  if (isReinstallAll) {
-    return false;
   }
 
   // Skip prompt if --yes
