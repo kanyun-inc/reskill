@@ -1601,7 +1601,8 @@ export class SkillManager {
     const optionsWithContext = { ...options, registryContext };
 
     // Save custom registry to skills.json.registries (for reinstall without lock file)
-    if (!this.isEffectivelyGlobal(targetAgents) && options.registry) {
+    const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+    if (!effectivelyGlobal && options.registry) {
       const registryName = this.deriveRegistryName(options.registry);
       if (registryName) {
         this.config.ensureExists();
