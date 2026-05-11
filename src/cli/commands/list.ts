@@ -14,12 +14,14 @@ export const listCommand = new Command('list')
   .option('-g, --global', 'List globally installed skills')
   .option('-a, --agent <agent>', 'List skills installed to a specific agent')
   .action((options) => {
-    const agent: AgentType | undefined = options.agent;
+    const agentInput: string | undefined = options.agent;
 
-    if (agent && !isValidAgentType(agent)) {
-      logger.error(`Invalid agent: ${agent}`);
+    if (agentInput !== undefined && !isValidAgentType(agentInput)) {
+      logger.error(`Invalid agent: ${agentInput}`);
       process.exit(1);
     }
+
+    const agent = agentInput as AgentType | undefined;
 
     // claude-cowork-3p is always global
     const isGlobal = options.global || agent === CLAUDE_COWORK_3P_AGENT || false;

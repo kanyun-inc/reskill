@@ -32,7 +32,11 @@ import {
   isValidAgentType,
 } from './agent-registry.js';
 import { CacheManager } from './cache-manager.js';
-import { CLAUDE_COWORK_3P_AGENT, getClaude3pSkillPath } from './claude-3p-installer.js';
+import {
+  CLAUDE_COWORK_3P_AGENT,
+  getClaude3pSkillPath,
+  listClaude3pSkills,
+} from './claude-3p-installer.js';
 import { ConfigLoader, DEFAULT_REGISTRIES } from './config-loader.js';
 import { GitResolver } from './git-resolver.js';
 import { HttpResolver } from './http-resolver.js';
@@ -754,6 +758,25 @@ export class SkillManager {
           skills.push(skill);
           seenNames.add(name);
         }
+      }
+    }
+
+    // In global mode, also include claude-cowork-3p skills (always global)
+    if (this.isGlobal) {
+      try {
+        for (const name of listClaude3pSkills()) {
+          if (seenNames.has(name)) {
+            continue;
+          }
+          const skillPath = getClaude3pSkillPath(name);
+          const skill = this.getInstalledSkillFromPath(name, skillPath);
+          if (skill) {
+            skills.push(skill);
+            seenNames.add(name);
+          }
+        }
+      } catch {
+        // Claude Cowork 3P not configured or accessible — skip silently
       }
     }
 

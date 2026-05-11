@@ -810,6 +810,41 @@ describe('SkillManager bug fixes', () => {
       expect(skills).toHaveLength(1);
       expect(skills[0].name).toBe('shared-skill');
     });
+
+    it('should list skills filtered by agent', () => {
+      // Create skill in cursor agent directory
+      const cursorDir = path.join(tempDir, '.cursor', 'skills', 'cursor-skill');
+      fs.mkdirSync(cursorDir, { recursive: true });
+      fs.writeFileSync(path.join(cursorDir, 'SKILL.md'), '# Cursor Skill');
+
+      // Create skill in claude-code agent directory (should not appear)
+      const claudeDir = path.join(tempDir, '.claude', 'skills', 'claude-skill');
+      fs.mkdirSync(claudeDir, { recursive: true });
+      fs.writeFileSync(path.join(claudeDir, 'SKILL.md'), '# Claude Skill');
+
+      const skills = skillManager.list({ agent: 'cursor' });
+
+      expect(skills).toHaveLength(1);
+      expect(skills[0].name).toBe('cursor-skill');
+    });
+
+    it('should return empty array when no skills exist for the specified agent', () => {
+      const skills = skillManager.list({ agent: 'codex' });
+      expect(skills).toHaveLength(0);
+    });
+
+    it('should still list all skills when no agent filter is specified', () => {
+      // Create skill in canonical location
+      const canonicalDir = path.join(tempDir, '.agents', 'skills', 'my-skill');
+      fs.mkdirSync(canonicalDir, { recursive: true });
+      fs.writeFileSync(path.join(canonicalDir, 'SKILL.md'), '# My Skill');
+
+      const skillsWithFilter = skillManager.list({ agent: 'cursor' });
+      const skillsWithout = skillManager.list();
+
+      expect(skillsWithFilter).toHaveLength(0); // Not in cursor dir
+      expect(skillsWithout).toHaveLength(1); // In canonical dir
+    });
   });
 
   describe('getInstalledSkill() should find skills in canonical directory', () => {
