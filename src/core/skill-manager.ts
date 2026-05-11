@@ -117,6 +117,20 @@ export class SkillManager {
   }
 
   /**
+   * Determine if the installation is effectively global.
+   *
+   * Claude Cowork 3P always installs to a global app-managed directory regardless
+   * of the isGlobal flag. When all target agents are claude-cowork-3p, the
+   * installation should be treated as global (skip skills.json/skills.lock writes).
+   */
+  private isEffectivelyGlobal(targetAgents: AgentType[]): boolean {
+    if (this.isGlobal) return true;
+    return (
+      targetAgents.length > 0 && targetAgents.every((a) => a === CLAUDE_COWORK_3P_AGENT)
+    );
+  }
+
+  /**
    * Get project root directory
    */
   getProjectRoot(): string {
@@ -1117,7 +1131,8 @@ export class SkillManager {
         { mode: mode as InstallMode },
       );
 
-      if (!this.isGlobal) {
+      const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+      if (!effectivelyGlobal) {
         this.lockManager.lockSkill(skillInfo.name, {
           source: skillSource,
           version: semanticVersion,
@@ -1127,7 +1142,7 @@ export class SkillManager {
         });
       }
 
-      if (!this.isGlobal && save) {
+      if (!effectivelyGlobal && save) {
         this.config.ensureExists();
         this.config.addSkill(skillInfo.name, `${baseRefForSave}#${skillInfo.name}`);
       }
@@ -1202,8 +1217,9 @@ export class SkillManager {
       mode: mode as InstallMode,
     });
 
-    // Update lock file (project mode only)
-    if (!this.isGlobal) {
+    // Update lock file (project mode only, skip for effectively-global installs)
+    const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+    if (!effectivelyGlobal) {
       const lockSource =
         registryContext?.lockSource ??
         `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? `/${parsed.subPath}` : ''}`;
@@ -1217,8 +1233,8 @@ export class SkillManager {
       });
     }
 
-    // Update skills.json (project mode only)
-    if (!this.isGlobal && save) {
+    // Update skills.json (project mode only, skip for effectively-global installs)
+    if (!effectivelyGlobal && save) {
       this.config.ensureExists();
       const configRef = registryContext?.configRef ?? this.config.normalizeSkillRef(ref);
       this.config.addSkill(skillName, configRef);
@@ -1302,8 +1318,9 @@ export class SkillManager {
       mode: mode as InstallMode,
     });
 
-    // Update lock file (project mode only)
-    if (!this.isGlobal) {
+    // Update lock file (project mode only, skip for effectively-global installs)
+    const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+    if (!effectivelyGlobal) {
       const lockSource = registryContext?.lockSource ?? `http:${httpInfo.host}/${skillName}`;
       this.lockManager.lockSkill(skillName, {
         source: lockSource,
@@ -1315,8 +1332,8 @@ export class SkillManager {
       });
     }
 
-    // Update skills.json (project mode only)
-    if (!this.isGlobal && save) {
+    // Update skills.json (project mode only, skip for effectively-global installs)
+    if (!effectivelyGlobal && save) {
       this.config.ensureExists();
       const configRef = registryContext?.configRef ?? ref;
       this.config.addSkill(skillName, configRef);
@@ -1476,8 +1493,9 @@ export class SkillManager {
         mode: mode as InstallMode,
       });
 
-      // 7. Update lock file (project mode only)
-      if (!this.isGlobal) {
+      // 7. Update lock file (project mode only, skip for effectively-global installs)
+      const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+      if (!effectivelyGlobal) {
         this.lockManager.lockSkill(shortName, {
           source: `registry:${resolvedParsed.fullName}`,
           version,
@@ -1488,8 +1506,8 @@ export class SkillManager {
         });
       }
 
-      // 8. Update skills.json (project mode only)
-      if (!this.isGlobal && save) {
+      // 8. Update skills.json (project mode only, skip for effectively-global installs)
+      if (!effectivelyGlobal && save) {
         this.config.ensureExists();
         // Save with full name for registry skills
         this.config.addSkill(shortName, ref);
@@ -1583,7 +1601,8 @@ export class SkillManager {
     const optionsWithContext = { ...options, registryContext };
 
     // Save custom registry to skills.json.registries (for reinstall without lock file)
-    if (!this.isGlobal && options.registry) {
+    const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+    if (!effectivelyGlobal && options.registry) {
       const registryName = this.deriveRegistryName(options.registry);
       if (registryName) {
         this.config.ensureExists();
@@ -1726,8 +1745,9 @@ export class SkillManager {
       const skillName = metadata?.name ?? shortName;
       const semanticVersion = metadata?.version ?? version;
 
-      // Update lock file (project mode only)
-      if (!this.isGlobal) {
+      // Update lock file (project mode only, skip for effectively-global installs)
+      const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+      if (!effectivelyGlobal) {
         this.lockManager.lockSkill(skillName, {
           source: `registry:${parsed.fullName}`,
           version: semanticVersion,
@@ -1738,8 +1758,8 @@ export class SkillManager {
         });
       }
 
-      // Update skills.json (project mode only)
-      if (!this.isGlobal && save) {
+      // Update skills.json (project mode only, skip for effectively-global installs)
+      if (!effectivelyGlobal && save) {
         this.config.ensureExists();
         this.config.addSkill(skillName, parsed.fullName);
 
@@ -1836,13 +1856,14 @@ export class SkillManager {
 
     const results = installer.uninstallFromAgents(name, targetAgents);
 
-    // Remove from lock file (project mode only)
-    if (!this.isGlobal) {
+    // Remove from lock file (project mode only, skip for effectively-global installs)
+    const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+    if (!effectivelyGlobal) {
       this.lockManager.remove(name);
     }
 
-    // Remove from skills.json (project mode only)
-    if (!this.isGlobal && this.config.exists()) {
+    // Remove from skills.json (project mode only, skip for effectively-global installs)
+    if (!effectivelyGlobal && this.config.exists()) {
       this.config.removeSkill(name);
     }
 

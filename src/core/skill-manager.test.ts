@@ -2801,6 +2801,155 @@ describe('SkillManager --registry auto-save to skills.json.registries', () => {
   });
 });
 
+describe('SkillManager isEffectivelyGlobal behavior for claude-cowork-3p', () => {
+  let tempDir: string;
+  let manager: SkillManager;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-effective-global-'));
+    manager = new SkillManager(tempDir);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should NOT modify skills.json/skills.lock when uninstalling from only claude-cowork-3p', () => {
+    // Setup: Create skills.json and skills.lock with an existing skill
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({ skills: { 'test-skill': 'github:user/test-skill@v1.0.0' } }),
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.lock'),
+      JSON.stringify({
+        lockfileVersion: 1,
+        skills: {
+          'test-skill': {
+            source: 'github:user/test-skill',
+            version: '1.0.0',
+            ref: 'v1.0.0',
+            resolved: 'https://github.com/user/test-skill.git',
+            commit: 'abc123',
+            installedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    );
+
+    // Action: Uninstall targeting only claude-cowork-3p
+    manager.uninstallFromAgents('test-skill', ['claude-cowork-3p']);
+
+    // Assert: skills.json and skills.lock should remain unchanged
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.json'), 'utf-8'));
+    expect(config.skills['test-skill']).toBe('github:user/test-skill@v1.0.0');
+
+    const lock = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.lock'), 'utf-8'));
+    expect(lock.skills['test-skill']).toBeDefined();
+  });
+
+  it('should modify skills.json/skills.lock when uninstalling from a non-3p agent', () => {
+    // Setup: Create skills.json and skills.lock
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({ skills: { 'test-skill': 'github:user/test-skill@v1.0.0' } }),
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.lock'),
+      JSON.stringify({
+        lockfileVersion: 1,
+        skills: {
+          'test-skill': {
+            source: 'github:user/test-skill',
+            version: '1.0.0',
+            ref: 'v1.0.0',
+            resolved: 'https://github.com/user/test-skill.git',
+            commit: 'abc123',
+            installedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    );
+
+    // Action: Uninstall targeting cursor (non-3p agent)
+    manager.uninstallFromAgents('test-skill', ['cursor']);
+
+    // Assert: skills.json and skills.lock should have the skill removed
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.json'), 'utf-8'));
+    expect(config.skills['test-skill']).toBeUndefined();
+
+    const lock = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.lock'), 'utf-8'));
+    expect(lock.skills['test-skill']).toBeUndefined();
+  });
+
+  it('should NOT write skills.json/skills.lock when installing to only claude-cowork-3p', async () => {
+    // Note: This test mocks installToAgentsFromGit entirely, so it only verifies
+    // the dispatch path (installToAgents delegates to the private method without
+    // any manifest writes of its own). The isEffectivelyGlobal method itself is
+    // exercised by the uninstall tests below, which verify the core logic without
+    // network dependencies.
+    const mockResult = {
+      skill: {
+        name: 'test-skill',
+        path: '/tmp/skill',
+        version: '1.0.0',
+        source: 'github:user/test-skill',
+      },
+      results: new Map([
+        ['claude-cowork-3p', { success: true, path: '/tmp', mode: 'copy' as const }],
+      ]),
+    };
+
+    vi.spyOn(
+      manager as unknown as Record<string, (...args: unknown[]) => unknown>,
+      'installToAgentsFromGit',
+    ).mockResolvedValue(mockResult);
+
+    // Action: Install targeting only claude-cowork-3p
+    await manager.installToAgents('github:user/test-skill@v1.0.0', ['claude-cowork-3p']);
+
+    // Assert: No skills.json or skills.lock should be created
+    expect(fs.existsSync(path.join(tempDir, 'skills.json'))).toBe(false);
+    expect(fs.existsSync(path.join(tempDir, 'skills.lock'))).toBe(false);
+  });
+
+  it('should modify skills.json/skills.lock when uninstalling from both claude-cowork-3p and non-3p agents', () => {
+    // Simulates: reskill uninstall test-skill -a claude-cowork-3p cursor
+    // Mixed agents include a non-3p agent, so manifest SHOULD be updated.
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({ skills: { 'test-skill': 'github:user/test-skill@v1.0.0' } }),
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.lock'),
+      JSON.stringify({
+        lockfileVersion: 1,
+        skills: {
+          'test-skill': {
+            source: 'github:user/test-skill',
+            version: '1.0.0',
+            ref: 'v1.0.0',
+            resolved: 'https://github.com/user/test-skill.git',
+            commit: 'abc123',
+            installedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    );
+
+    // Action: Uninstall targeting both claude-cowork-3p and cursor
+    manager.uninstallFromAgents('test-skill', ['claude-cowork-3p', 'cursor']);
+
+    // Assert: skills.json and skills.lock should be updated (cursor is non-global)
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.json'), 'utf-8'));
+    expect(config.skills['test-skill']).toBeUndefined();
+
+    const lock = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.lock'), 'utf-8'));
+    expect(lock.skills['test-skill']).toBeUndefined();
+  });
+});
+
 // Integration tests (require network)
 describe('SkillManager integration', () => {
   it.skip('should install from real repository', async () => {
