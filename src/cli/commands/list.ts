@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { getAgentConfig } from '../../core/agent-registry.js';
+import { type AgentType, getAgentConfig, isValidAgentType } from '../../core/agent-registry.js';
+import { CLAUDE_COWORK_3P_AGENT } from '../../core/claude-3p-installer.js';
 import { SkillManager } from '../../core/skill-manager.js';
 import { logger } from '../../utils/logger.js';
 
@@ -11,13 +12,26 @@ export const listCommand = new Command('list')
   .description('List installed skills')
   .option('-j, --json', 'Output as JSON')
   .option('-g, --global', 'List globally installed skills')
+  .option('-a, --agent <agent>', 'List skills installed to a specific agent')
   .action((options) => {
-    const isGlobal = options.global || false;
+    const agent: AgentType | undefined = options.agent;
+
+    if (agent && !isValidAgentType(agent)) {
+      logger.error(`Invalid agent: ${agent}`);
+      process.exit(1);
+    }
+
+    // claude-cowork-3p is always global
+    const isGlobal = options.global || agent === CLAUDE_COWORK_3P_AGENT || false;
     const skillManager = new SkillManager(undefined, { global: isGlobal });
-    const skills = skillManager.list();
+    const skills = skillManager.list(agent ? { agent } : undefined);
 
     if (skills.length === 0) {
-      const location = isGlobal ? 'globally' : 'in this project';
+      const location = agent
+        ? `for ${getAgentConfig(agent).displayName}`
+        : isGlobal
+          ? 'globally'
+          : 'in this project';
       logger.info(`No skills installed ${location}`);
       return;
     }
@@ -27,7 +41,11 @@ export const listCommand = new Command('list')
       return;
     }
 
-    const scopeLabel = isGlobal ? 'global' : 'project';
+    const scopeLabel = agent
+      ? getAgentConfig(agent).displayName
+      : isGlobal
+        ? 'global'
+        : 'project';
     logger.log(`Installed Skills (${scopeLabel}):`);
     logger.newline();
 

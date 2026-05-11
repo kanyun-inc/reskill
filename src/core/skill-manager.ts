@@ -695,9 +695,14 @@ export class SkillManager {
   /**
    * List installed skills
    *
-   * Checks both canonical (.agents/skills/) and legacy (.skills/) locations.
+   * When `agent` is specified, lists skills installed to that specific agent.
+   * Otherwise checks both canonical (.agents/skills/) and legacy (.skills/) locations.
    */
-  list(): InstalledSkill[] {
+  list(options?: { agent?: AgentType }): InstalledSkill[] {
+    if (options?.agent) {
+      return this.listByAgent(options.agent);
+    }
+
     const skills: InstalledSkill[] = [];
     const seenNames = new Set<string>();
 
@@ -749,6 +754,33 @@ export class SkillManager {
           skills.push(skill);
           seenNames.add(name);
         }
+      }
+    }
+
+    return skills;
+  }
+
+  /**
+   * List skills installed to a specific agent
+   */
+  private listByAgent(agent: AgentType): InstalledSkill[] {
+    const installer = new Installer({
+      cwd: this.projectRoot,
+      global: this.isGlobal,
+    });
+
+    const skillNames = installer.listInstalledSkills(agent);
+    const skills: InstalledSkill[] = [];
+
+    for (const name of skillNames) {
+      try {
+        const skillPath = installer.getAgentSkillPath(name, agent);
+        const skill = this.getInstalledSkillFromPath(name, skillPath);
+        if (skill) {
+          skills.push(skill);
+        }
+      } catch {
+        // Skip skills whose paths cannot be resolved (e.g. claude-3p not configured)
       }
     }
 
