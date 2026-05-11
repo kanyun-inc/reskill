@@ -1855,13 +1855,14 @@ export class SkillManager {
 
     const results = installer.uninstallFromAgents(name, targetAgents);
 
-    // Remove from lock file (project mode only)
-    if (!this.isGlobal) {
+    // Remove from lock file (project mode only, skip for effectively-global installs)
+    const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+    if (!effectivelyGlobal) {
       this.lockManager.remove(name);
     }
 
-    // Remove from skills.json (project mode only)
-    if (!this.isGlobal && this.config.exists()) {
+    // Remove from skills.json (project mode only, skip for effectively-global installs)
+    if (!effectivelyGlobal && this.config.exists()) {
       this.config.removeSkill(name);
     }
 
