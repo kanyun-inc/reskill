@@ -24,7 +24,7 @@ export const listCommand = new Command('list')
     const agent = agentInput as AgentType | undefined;
 
     // claude-cowork-3p is always global
-    const isGlobal = options.global || agent === CLAUDE_COWORK_3P_AGENT || false;
+    const isGlobal = options.global || agent === CLAUDE_COWORK_3P_AGENT;
     const skillManager = new SkillManager(undefined, { global: isGlobal });
     const skills = skillManager.list(agent ? { agent } : undefined);
 
