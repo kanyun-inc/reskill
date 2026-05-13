@@ -1,7 +1,7 @@
 ---
 name: reskill-usage
 description: Teaches AI agents how to use reskill — a Git-based package manager for AI agent skills. Covers CLI commands, install formats, configuration, publishing, and common workflows.
-version: 0.1.4
+version: 0.1.5
 author: reskill
 tags:
   - cli
@@ -11,7 +11,7 @@ tags:
 ---
 
 <!-- source: README.md -->
-<!-- synced: 2026-04-13 -->
+<!-- synced: 2026-05-11 -->
 
 # reskill Usage Guide
 
@@ -97,6 +97,7 @@ Run `reskill <command> --help` for complete options and detailed usage.
 | `--no-save`               | `install`                                                     | Install without saving to `skills.json` (for personal skills) |
 | `-g, --global`            | `install`, `uninstall`, `list`                                | Install/manage skills globally (user directory)               |
 | `-a, --agent <agents...>` | `install`                                                     | Specify target agents (e.g., `cursor`, `claude-code`)         |
+| `-a, --agent <agent>`     | `list`                                                        | List skills installed to a specific agent                     |
 | `--mode <mode>`           | `install`                                                     | Installation mode: `symlink` (default) or `copy`              |
 | `--all`                   | `install`                                                     | Install to all agents                                         |
 | `-y, --yes`               | `install`, `uninstall`, `publish`                             | Skip confirmation prompts                                     |
@@ -247,6 +248,7 @@ Skills are installed to `.skills/` by default and can be integrated with any age
 | Amp            | `.agents/skills`   |
 | Antigravity    | `.agent/skills`    |
 | Claude Code    | `.claude/skills`   |
+| Claude Cowork 3P | App-managed global directory |
 | Clawdbot       | `skills`           |
 | Codex          | `.codex/skills`    |
 | Cursor         | `.cursor/skills`   |
@@ -270,6 +272,10 @@ reskill install github:user/skill -a cursor claude-code
 
 # Install to all detected agents
 reskill install github:user/skill --all
+
+# List skills installed to a specific agent
+reskill list -a cursor
+reskill list -a claude-cowork-3p
 ```
 
 ## Publishing
@@ -362,6 +368,7 @@ reskill update skill-name
 | ------- | ---- | ----------------------- | ------------------------------------------ |
 | Project | -    | `.skills/` (in project) | Team-shared skills, committed to git       |
 | Global  | `-g` | `~/.agents/skills/`     | Personal skills, available in all projects |
+| Claude Cowork 3P | `-a claude-cowork-3p` | App-managed global directory | Always global, no `skills.json` writes |
 
 ```bash
 # Project-level (default)
@@ -369,6 +376,9 @@ reskill install github:user/skill
 
 # Global (personal, all projects)
 reskill install github:user/skill -g
+
+# Install to Claude Cowork 3P (always global)
+reskill install github:user/skill -a claude-cowork-3p
 
 # Personal project-level (not saved to skills.json)
 reskill install github:user/skill --no-save
