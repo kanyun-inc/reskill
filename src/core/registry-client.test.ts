@@ -942,8 +942,8 @@ describe('RegistryClient', () => {
         }),
       );
 
-      // Verify second call to OSS signed URL
-      expect(mockFetch).toHaveBeenNthCalledWith(2, ossSignedUrl);
+      // Verify second call to OSS signed URL (init arg may be undefined)
+      expect(mockFetch).toHaveBeenNthCalledWith(2, ossSignedUrl, undefined);
     });
 
     it('should handle 301 redirect same as 302', async () => {
@@ -1005,6 +1005,93 @@ describe('RegistryClient', () => {
       await expect(client.downloadSkill('@kanyun/test-skill', '1.0.0')).rejects.toThrow(
         'Download from storage failed: 403',
       );
+    });
+
+    it('should surface undici cause when registry fetch fails at network level', async () => {
+      // Simulate Node.js / undici behavior: `fetch failed` is a generic message
+      // wrapping the real reason in `error.cause`. We want users to see the
+      // underlying code (e.g. UND_ERR_CONNECT_TIMEOUT) instead of just "fetch failed".
+      const networkError = new TypeError('fetch failed');
+      Object.assign(networkError, {
+        cause: Object.assign(new Error('Connect Timeout Error'), {
+          code: 'UND_ERR_CONNECT_TIMEOUT',
+        }),
+      });
+      mockFetch.mockRejectedValueOnce(networkError);
+
+      await expect(client.downloadSkill('@kanyun/test-skill', '1.0.0')).rejects.toThrow(
+        /Network error contacting .*\/api\/skills\/.*\/download.*UND_ERR_CONNECT_TIMEOUT.*Connect Timeout Error/,
+      );
+    });
+
+    it('should walk nested causes to find the deepest code-bearing one', async () => {
+      // Real-world undici-through-proxy case:
+      //   TypeError: fetch failed
+      //     → DOMException { message: 'Request was cancelled' }   (no code)
+      //         → RequestAbortedError { code: 'UND_ERR_ABORTED', message: 'aborted' }
+      // The deepest cause carries the actionable code; the intermediate one only
+      // has a generic message.
+      const deepest = Object.assign(new Error('aborted'), { code: 'UND_ERR_ABORTED' });
+      const middle = Object.assign(new Error('Request was cancelled'), { cause: deepest });
+      const outer = new TypeError('fetch failed');
+      Object.assign(outer, { cause: middle });
+      mockFetch.mockRejectedValueOnce(outer);
+
+      await expect(client.downloadSkill('@kanyun/test-skill', '1.0.0')).rejects.toThrow(
+        /UND_ERR_ABORTED.*aborted/,
+      );
+    });
+
+    it('should prefer first code-bearing cause when intermediate has only a message', async () => {
+      // If the immediate cause has neither code nor a useful message, but a
+      // deeper cause does, we should still extract it.
+      const deepest = Object.assign(new Error('Hostname/IP does not match certificate'), {
+        code: 'ERR_TLS_CERT_ALTNAME_INVALID',
+      });
+      const outer = new TypeError('fetch failed');
+      // No intermediate — single level is the simple/common case; this test
+      // pins that the simple case still works after the refactor.
+      Object.assign(outer, { cause: deepest });
+      mockFetch.mockRejectedValueOnce(outer);
+
+      await expect(client.downloadSkill('@kanyun/test-skill', '1.0.0')).rejects.toThrow(
+        /ERR_TLS_CERT_ALTNAME_INVALID.*Hostname\/IP does not match certificate/,
+      );
+    });
+
+    it('should surface undici cause when OSS fetch fails at network level', async () => {
+      const ossUrl = 'https://oss.example.com/secret-bucket/file.tgz?Signature=verysecret&Expires=123';
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 302,
+        headers: new Headers({
+          'x-integrity': 'sha256-ossnetfail',
+          Location: ossUrl,
+        }),
+      });
+
+      const networkError = new TypeError('fetch failed');
+      Object.assign(networkError, {
+        cause: Object.assign(new Error('getaddrinfo ENOTFOUND oss.example.com'), {
+          code: 'ENOTFOUND',
+        }),
+      });
+      mockFetch.mockRejectedValueOnce(networkError);
+
+      try {
+        await client.downloadSkill('@kanyun/test-skill', '1.0.0');
+        throw new Error('expected downloadSkill to reject');
+      } catch (err) {
+        const msg = (err as Error).message;
+        expect(msg).toMatch(/Network error contacting/);
+        expect(msg).toContain('ENOTFOUND');
+        expect(msg).toContain('oss.example.com');
+        expect(msg).toContain('/secret-bucket/file.tgz');
+        // Must NOT leak the signed URL's query string (signature)
+        expect(msg).not.toContain('Signature=verysecret');
+        expect(msg).not.toContain('?');
+      }
     });
 
     it('should throw error for non-existent skill', async () => {
