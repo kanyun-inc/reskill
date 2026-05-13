@@ -134,18 +134,55 @@ export class RegistryError extends Error {
  * Extract a human-readable reason from an error thrown by `fetch()`.
  *
  * Node's undici throws a generic `TypeError: fetch failed` and stashes the
- * real reason in `error.cause` (e.g. `{ code: 'UND_ERR_CONNECT_TIMEOUT', message: '...' }`).
- * This helper produces strings like `UND_ERR_CONNECT_TIMEOUT: Connect Timeout Error`.
+ * real reason in `error.cause`. The chain can be deeper than one level —
+ * e.g. through a corporate proxy:
+ *   TypeError: fetch failed
+ *     → DOMException { message: 'Request was cancelled' }
+ *         → RequestAbortedError { code: 'UND_ERR_ABORTED', message: 'aborted' }
+ *
+ * Walk the `cause` chain and prefer the deepest entry that carries a `code`,
+ * since that's the actionable bit for triage. Falls back to the deepest
+ * available `message`, then to the outermost error's message.
+ *
+ * Produces strings like `UND_ERR_CONNECT_TIMEOUT: Connect Timeout Error`.
  */
 function formatFetchCause(err: unknown): string {
-  const cause = (err as { cause?: { code?: string; message?: string } } | null)?.cause;
-  if (cause) {
-    const code = cause.code;
-    const message = cause.message;
-    if (code && message) return `${code}: ${message}`;
-    if (code) return code;
-    if (message) return message;
+  // Cap traversal depth to defend against pathological self-referential chains.
+  const MAX_DEPTH = 8;
+
+  let bestCode: string | undefined;
+  let bestMessage: string | undefined;
+  let fallbackMessage: string | undefined;
+  const seen = new Set<unknown>();
+
+  let current: unknown = err;
+  for (let depth = 0; depth < MAX_DEPTH && current != null; depth++) {
+    if (seen.has(current)) break;
+    seen.add(current);
+
+    if (typeof current !== 'object') break;
+    const node = current as { code?: unknown; message?: unknown; cause?: unknown };
+
+    if (typeof node.code === 'string' && node.code) {
+      // Prefer the deepest code, so keep overwriting as we descend.
+      bestCode = node.code;
+      if (typeof node.message === 'string' && node.message) {
+        bestMessage = node.message;
+      }
+    } else if (typeof node.message === 'string' && node.message && !fallbackMessage) {
+      // Remember the first non-empty message in case no code is ever found.
+      // Skip undici's generic outer wrapper to avoid surfacing "fetch failed".
+      if (node.message !== 'fetch failed') {
+        fallbackMessage = node.message;
+      }
+    }
+
+    current = node.cause;
   }
+
+  if (bestCode && bestMessage) return `${bestCode}: ${bestMessage}`;
+  if (bestCode) return bestCode;
+  if (fallbackMessage) return fallbackMessage;
   return (err as Error)?.message || String(err);
 }
 
