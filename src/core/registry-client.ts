@@ -127,6 +127,43 @@ export class RegistryError extends Error {
 }
 
 // ============================================================================
+// Internal helpers
+// ============================================================================
+
+/**
+ * Extract a human-readable reason from an error thrown by `fetch()`.
+ *
+ * Node's undici throws a generic `TypeError: fetch failed` and stashes the
+ * real reason in `error.cause` (e.g. `{ code: 'UND_ERR_CONNECT_TIMEOUT', message: '...' }`).
+ * This helper produces strings like `UND_ERR_CONNECT_TIMEOUT: Connect Timeout Error`.
+ */
+function formatFetchCause(err: unknown): string {
+  const cause = (err as { cause?: { code?: string; message?: string } } | null)?.cause;
+  if (cause) {
+    const code = cause.code;
+    const message = cause.message;
+    if (code && message) return `${code}: ${message}`;
+    if (code) return code;
+    if (message) return message;
+  }
+  return (err as Error)?.message || String(err);
+}
+
+/**
+ * Render a URL for inclusion in error messages without leaking the query string.
+ * Signed download URLs put the signature in the query, so we strip it.
+ * Returns `<origin><pathname>`, or `<unknown url>` if parsing fails.
+ */
+function describeUrl(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return '<unknown url>';
+  }
+}
+
+// ============================================================================
 // RegistryClient Class
 // ============================================================================
 
@@ -152,6 +189,26 @@ export class RegistryClient {
   }
 
   /**
+   * Wrap `fetch()` to convert undici's generic `TypeError: fetch failed`
+   * (raised on DNS / TCP / TLS / connect-timeout errors) into a
+   * {@link RegistryError} that surfaces the underlying `cause` code and
+   * the (sanitized) URL. Without this, users only see `fetch failed`,
+   * which is not actionable for support triage.
+   *
+   * HTTP-level errors (non-2xx responses) are NOT touched here — call sites
+   * still handle them as before.
+   */
+  private async safeFetch(url: string, init?: RequestInit): Promise<Response> {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      throw new RegistryError(
+        `Network error contacting ${describeUrl(url)}: ${formatFetchCause(err)}`,
+      );
+    }
+  }
+
+  /**
    * Get authorization headers
    */
   private getAuthHeaders(): Record<string, string> {
@@ -173,7 +230,7 @@ export class RegistryClient {
   async whoami(): Promise<WhoamiResponse> {
     const url = `${this.getApiBase()}/skill-auth/me`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     });
@@ -203,7 +260,7 @@ export class RegistryClient {
   async loginCli(): Promise<LoginCliResponse> {
     const url = `${this.getApiBase()}/skill-auth/login-cli`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'POST',
       headers: this.getAuthHeaders(),
     });
@@ -284,7 +341,7 @@ export class RegistryClient {
   async getSkillInfo(skillName: string): Promise<SkillInfo> {
     const url = `${this.getApiBase()}/skills/${encodeURIComponent(skillName)}`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     });
@@ -344,7 +401,7 @@ export class RegistryClient {
 
     const url = `${this.getApiBase()}/skills?${params.toString()}`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     });
@@ -393,7 +450,7 @@ export class RegistryClient {
     // Otherwise treat it as a tag and query dist-tags
     const url = `${this.getApiBase()}/skills/${encodeURIComponent(skillName)}`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     });
@@ -454,7 +511,7 @@ export class RegistryClient {
     // Use redirect: 'manual' to capture x-integrity header from 302 responses.
     // The registry returns a 302 redirect to OSS with the integrity header,
     // which would be lost if fetch auto-follows the redirect.
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'GET',
       headers: this.getAuthHeaders(),
       redirect: 'manual',
@@ -469,7 +526,7 @@ export class RegistryClient {
         throw new RegistryError('Missing redirect location in download response', response.status);
       }
 
-      const downloadResponse = await fetch(location);
+      const downloadResponse = await this.safeFetch(location);
       if (!downloadResponse.ok) {
         throw new RegistryError(
           `Download from storage failed: ${downloadResponse.status}`,
@@ -609,7 +666,7 @@ export class RegistryClient {
     formData.append('tarball', tarballBlob, `${skillName.replace('/', '-')}.tgz`);
 
     // Send request
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: formData,
@@ -643,7 +700,7 @@ export class RegistryClient {
     const params = new URLSearchParams({ path: groupPath });
     const url = `${this.getApiBase()}/skill-groups/resolve?${params.toString()}`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     });
@@ -678,7 +735,7 @@ export class RegistryClient {
     const qs = params.toString();
     const url = `${this.getApiBase()}/skill-groups${qs ? `?${qs}` : ''}`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     });
@@ -711,7 +768,7 @@ export class RegistryClient {
   }): Promise<SkillGroup> {
     const url = `${this.getApiBase()}/skill-groups`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'POST',
       headers: {
         ...this.getAuthHeaders(),
@@ -748,7 +805,7 @@ export class RegistryClient {
     const encodedGroupId = encodeURIComponent(groupId);
     const url = `${this.getApiBase()}/skill-groups/${encodedGroupId}${params}`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
@@ -778,7 +835,7 @@ export class RegistryClient {
     const encodedGroupId = encodeURIComponent(groupId);
     const url = `${this.getApiBase()}/skill-groups/${encodedGroupId}/members`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     });
@@ -811,7 +868,7 @@ export class RegistryClient {
     const encodedGroupId = encodeURIComponent(groupId);
     const url = `${this.getApiBase()}/skill-groups/${encodedGroupId}/members`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'POST',
       headers: {
         ...this.getAuthHeaders(),
@@ -841,7 +898,7 @@ export class RegistryClient {
     const encodedGroupId = encodeURIComponent(groupId);
     const url = `${this.getApiBase()}/skill-groups/${encodedGroupId}/members?${params.toString()}`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
@@ -871,7 +928,7 @@ export class RegistryClient {
     const encodedGroupId = encodeURIComponent(groupId);
     const url = `${this.getApiBase()}/skill-groups/${encodedGroupId}/members`;
 
-    const response = await fetch(url, {
+    const response = await this.safeFetch(url, {
       method: 'PATCH',
       headers: {
         ...this.getAuthHeaders(),
