@@ -1488,21 +1488,65 @@ export class SkillManager {
       const locked = this.lockManager.get(shortName);
       const lockedVersion = locked?.version;
 
-      // Same version already installed
       if (locked && lockedVersion === version) {
-        logger.info(`${shortName}@${version} is already installed.`);
-        const installed = this.getInstalledSkill(shortName);
-        if (installed) {
-          return {
-            skill: installed,
-            results: new Map(
-              targetAgents.map((a) => [
-                a,
-                { success: true, path: skillPath, mode: mode as InstallMode },
-              ]),
-            ),
-          };
+        // Same version in canonical location — check per-agent
+        const defaults = this.config.getDefaults();
+        const installer = new Installer({
+          cwd: this.projectRoot,
+          global: this.isGlobal,
+          installDir: defaults.installDir,
+        });
+
+        const missingAgents = targetAgents.filter(
+          (agent) => !installer.isInstalled(shortName, agent),
+        );
+
+        if (missingAgents.length === 0) {
+          // All target agents already have it
+          logger.info(`${shortName}@${version} is already installed.`);
+          const installed = this.getInstalledSkill(shortName);
+          if (installed) {
+            return {
+              skill: installed,
+              results: new Map(
+                targetAgents.map((a) => [
+                  a,
+                  { success: true, path: skillPath, mode: mode as InstallMode },
+                ]),
+              ),
+            };
+          }
         }
+
+        // Some agents missing — install to those agents from existing canonical path
+        if (missingAgents.length < targetAgents.length) {
+          logger.info(
+            `${shortName}@${version} already installed for ${targetAgents.length - missingAgents.length} agent(s), installing to ${missingAgents.length} more...`,
+          );
+        }
+
+        // Install to missing agents from the existing skillPath (no need to re-download)
+        const results = await installer.installToAgents(skillPath, shortName, missingAgents, {
+          mode: mode as InstallMode,
+        });
+
+        // Add already-installed agents to results
+        for (const agent of targetAgents) {
+          if (!missingAgents.includes(agent)) {
+            results.set(agent, { success: true, path: skillPath, mode: mode as InstallMode });
+          }
+        }
+
+        const successCount = Array.from(results.values()).filter((r) => r.success).length;
+        logger.success(`Installed ${shortName}@${version} to ${successCount} agent(s)`);
+
+        const skill: InstalledSkill = this.getInstalledSkill(shortName) ?? {
+          name: shortName,
+          path: skillPath,
+          version,
+          source: `registry:${resolvedParsed.fullName}`,
+        };
+        return { skill, results };
       }
 
       // Different version or no lock info - warn user

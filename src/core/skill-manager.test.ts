@@ -2218,6 +2218,197 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
 });
 
 // ============================================================================
+// Per-agent "already installed" check (Issue #276)
+// ============================================================================
+
+describe('SkillManager per-agent installation check', () => {
+  let tempDir: string;
+  let manager: SkillManager;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-per-agent-install-'));
+    manager = new SkillManager(tempDir);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  /**
+   * Helper: set up canonical skill path + lock file so the "already installed" branch is reached
+   */
+  function setupInstalledSkill(skillName: string, version: string) {
+    // Create canonical skill directory (.agents/skills/<name>)
+    const canonicalPath = path.join(tempDir, '.agents', 'skills', skillName);
+    fs.mkdirSync(canonicalPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(canonicalPath, 'SKILL.md'),
+      `---\nname: ${skillName}\nversion: ${version}\n---\n\n# ${skillName}\n`,
+    );
+
+    // Create skills.lock with matching version
+    const lockPath = path.join(tempDir, 'skills.lock');
+    const lockData = {
+      lockfileVersion: 1,
+      skills: {
+        [skillName]: {
+          source: `registry:@kanyun/${skillName}`,
+          version,
+          ref: version,
+          resolved: 'https://registry.example.com/',
+          commit: 'sha256-mock',
+          installedAt: new Date().toISOString(),
+          registry: 'https://registry.example.com/',
+        },
+      },
+    };
+    fs.writeFileSync(lockPath, JSON.stringify(lockData, null, 2));
+
+    return canonicalPath;
+  }
+
+  /**
+   * Helper: mock RegistryClient and RegistryResolver for standard registry flow
+   */
+  async function mockRegistryFlow(skillName: string, version: string) {
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: `@kanyun/${skillName}`,
+      source_type: 'registry',
+    });
+
+    const registryResolver = (manager as unknown as { registryResolver: RegistryResolver })
+      .registryResolver;
+    vi.spyOn(registryResolver, 'resolve').mockResolvedValue({
+      parsed: {
+        scope: '@kanyun',
+        name: skillName,
+        version,
+        fullName: `@kanyun/${skillName}`,
+      },
+      shortName: skillName,
+      version,
+      registryUrl: 'https://registry.example.com/',
+      tarball: Buffer.from('mock tarball'),
+      integrity: 'sha256-mock',
+    });
+
+    return registryResolver;
+  }
+
+  it('should install to new agent when skill is already installed for a different agent', async () => {
+    const skillName = 'cli-skill';
+    const version = '1.0.0';
+
+    // Set up: skill exists in canonical location
+    setupInstalledSkill(skillName, version);
+
+    // Set up: skill is installed for cursor (create cursor agent dir at .cursor/skills/)
+    const cursorSkillPath = path.join(tempDir, '.cursor', 'skills', skillName);
+    fs.mkdirSync(cursorSkillPath, { recursive: true });
+    fs.writeFileSync(path.join(cursorSkillPath, 'SKILL.md'), '# skill');
+
+    // Mock registry
+    await mockRegistryFlow(skillName, version);
+
+    // claude-code should NOT have the skill before install
+    const claudeSkillPath = path.join(tempDir, '.claude', 'skills', skillName);
+    expect(fs.existsSync(claudeSkillPath)).toBe(false);
+
+    // Install to claude-code (which doesn't have it yet)
+    const result = await manager.installToAgents(`@kanyun/${skillName}@${version}`, ['claude-code']);
+
+    // Should succeed — not skipped
+    expect(result.skill.name).toBe(skillName);
+    expect(result.results.get('claude-code')?.success).toBe(true);
+
+    // The skill should now actually exist in claude-code's directory
+    expect(fs.existsSync(claudeSkillPath)).toBe(true);
+  });
+
+  it('should skip installation when all target agents already have the skill', async () => {
+    const skillName = 'cli-skill';
+    const version = '1.0.0';
+
+    // Set up: skill exists in canonical location
+    setupInstalledSkill(skillName, version);
+
+    // Set up: skill is installed for both cursor (.cursor/skills/) and claude-code (.claude/skills/)
+    const cursorSkillPath = path.join(tempDir, '.cursor', 'skills', skillName);
+    fs.mkdirSync(cursorSkillPath, { recursive: true });
+    fs.writeFileSync(path.join(cursorSkillPath, 'SKILL.md'), '# skill');
+
+    const claudeSkillPath = path.join(tempDir, '.claude', 'skills', skillName);
+    fs.mkdirSync(claudeSkillPath, { recursive: true });
+    fs.writeFileSync(path.join(claudeSkillPath, 'SKILL.md'), '# skill');
+
+    // Mock registry
+    await mockRegistryFlow(skillName, version);
+
+    // Install to both agents (which already have it)
+    const result = await manager.installToAgents(`@kanyun/${skillName}@${version}`, [
+      'cursor',
+      'claude-code',
+    ]);
+
+    // Should report success without re-downloading
+    expect(result.skill.name).toBe(skillName);
+    expect(result.results.get('cursor')?.success).toBe(true);
+    expect(result.results.get('claude-code')?.success).toBe(true);
+  });
+
+  it('should warn when installed version differs and no --force', async () => {
+    const skillName = 'cli-skill';
+
+    // Set up: skill exists in canonical location with version 1.0.0
+    setupInstalledSkill(skillName, '1.0.0');
+
+    // Mock registry resolves to version 2.0.0 (different from lock)
+    await mockRegistryFlow(skillName, '2.0.0');
+
+    // Install without --force
+    const result = await manager.installToAgents(`@kanyun/${skillName}@2.0.0`, ['cursor']);
+
+    // Should return existing skill info (not re-download), with the existing version
+    expect(result.skill.name).toBe(skillName);
+    // The result returns the already-installed skill, not the new version
+    expect(result.skill.version).toBe('1.0.0');
+  });
+
+  it('should reinstall to all agents when --force is used regardless of installation status', async () => {
+    const skillName = 'cli-skill';
+    const version = '1.0.0';
+
+    // Set up: skill exists in canonical location
+    setupInstalledSkill(skillName, version);
+
+    // Set up: skill is installed for cursor (.cursor/skills/)
+    const cursorSkillPath = path.join(tempDir, '.cursor', 'skills', skillName);
+    fs.mkdirSync(cursorSkillPath, { recursive: true });
+    fs.writeFileSync(path.join(cursorSkillPath, 'SKILL.md'), '# skill');
+
+    // Mock registry
+    const registryResolver = await mockRegistryFlow(skillName, version);
+
+    // Mock extract to return a valid path
+    const mockSkillDir = path.join(tempDir, 'mock-extracted-skill');
+    fs.mkdirSync(mockSkillDir, { recursive: true });
+    fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), `---\nname: ${skillName}\nversion: ${version}\n---\n# skill`);
+    vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
+
+    // Install with --force to cursor (which already has it)
+    const result = await manager.installToAgents(`@kanyun/${skillName}@${version}`, ['cursor'], {
+      force: true,
+    });
+
+    // Should reinstall (force bypasses the check entirely)
+    expect(result.skill.name).toBe(skillName);
+    expect(result.results.get('cursor')?.success).toBe(true);
+  });
+});
+
+// ============================================================================
 // Tests for SKILL.md as authoritative source for skill name
 // ============================================================================
 
