@@ -1525,9 +1525,11 @@ export class SkillManager {
           );
         }
 
-        // Install to missing agents from the existing skillPath (no need to re-download)
+        // Install to missing agents from the existing skillPath (no need to re-download).
+        // Use 'copy' mode here because skillPath IS the canonical directory — symlink mode
+        // would remove(canonicalDir) before copyDirectory, destroying the source.
         const results = await installer.installToAgents(skillPath, shortName, missingAgents, {
-          mode: mode as InstallMode,
+          mode: 'copy',
         });
 
         // Add already-installed agents to results

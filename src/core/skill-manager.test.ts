@@ -2323,8 +2323,11 @@ describe('SkillManager per-agent installation check', () => {
     expect(result.skill.name).toBe(skillName);
     expect(result.results.get('claude-code')?.success).toBe(true);
 
-    // The skill should now actually exist in claude-code's directory
+    // The skill should now actually exist in claude-code's directory with valid content
     expect(fs.existsSync(claudeSkillPath)).toBe(true);
+    expect(fs.existsSync(path.join(claudeSkillPath, 'SKILL.md'))).toBe(true);
+    const content = fs.readFileSync(path.join(claudeSkillPath, 'SKILL.md'), 'utf-8');
+    expect(content).toContain('cli-skill');
   });
 
   it('should skip installation when all target agents already have the skill', async () => {
