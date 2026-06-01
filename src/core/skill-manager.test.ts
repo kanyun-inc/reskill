@@ -2409,6 +2409,99 @@ describe('SkillManager per-agent installation check', () => {
     expect(result.skill.name).toBe(skillName);
     expect(result.results.get('cursor')?.success).toBe(true);
   });
+
+  // ----------------------------------------------------------------------
+  // Bug repro: canonical skill exists without lock file (e.g. previous
+  // global install), now installing for a new agent should still copy the
+  // skill into that agent's directory instead of returning a fake success.
+  // ----------------------------------------------------------------------
+
+  /**
+   * Helper: create canonical skill WITHOUT writing a lock file.
+   * Simulates the state after a previous global install (no lock written).
+   */
+  function setupCanonicalSkillNoLock(skillName: string, version: string): string {
+    const canonicalPath = path.join(tempDir, '.agents', 'skills', skillName);
+    fs.mkdirSync(canonicalPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(canonicalPath, 'SKILL.md'),
+      `---\nname: ${skillName}\nversion: ${version}\n---\n\n# ${skillName}\n`,
+    );
+    return canonicalPath;
+  }
+
+  it('should install to target agent when canonical exists but no lock file (fixes regression)', async () => {
+    const skillName = 'cli-skill';
+    const version = '1.0.0';
+
+    // Canonical exists from a previous (global) install — no lock file written.
+    setupCanonicalSkillNoLock(skillName, version);
+
+    // Target agent (cursor) does NOT have the skill installed.
+    const cursorSkillPath = path.join(tempDir, '.cursor', 'skills', skillName);
+    expect(fs.existsSync(cursorSkillPath)).toBe(false);
+
+    await mockRegistryFlow(skillName, version);
+
+    const result = await manager.installToAgents(`@kanyun/${skillName}@${version}`, ['cursor']);
+
+    // Cursor must actually receive the skill (this was the bug — it didn't).
+    expect(result.results.get('cursor')?.success).toBe(true);
+    expect(fs.existsSync(cursorSkillPath)).toBe(true);
+    expect(fs.existsSync(path.join(cursorSkillPath, 'SKILL.md'))).toBe(true);
+  });
+
+  it('should install to claude-cowork-3p when canonical exists but skill not in claude-3p root (fixes user-reported bug)', async () => {
+    const { CLAUDE_3P_SKILLS_ROOT_ENV } = await import('./claude-3p-installer.js');
+    const skillName = 'docz';
+    const version = '0.10.0';
+
+    // Set up an isolated claude-3p skills root for this test.
+    const claude3pRoot = path.join(tempDir, 'claude-3p-root');
+    fs.mkdirSync(path.join(claude3pRoot, 'skills'), { recursive: true });
+    fs.writeFileSync(path.join(claude3pRoot, 'manifest.json'), '{"skills":[]}\n');
+    const originalRoot = process.env[CLAUDE_3P_SKILLS_ROOT_ENV];
+    process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = claude3pRoot;
+
+    try {
+      // Canonical exists from a previous install (no lock — global install scenario).
+      setupCanonicalSkillNoLock(skillName, version);
+
+      // claude-3p does NOT have the skill yet.
+      const claude3pSkillPath = path.join(claude3pRoot, 'skills', skillName);
+      expect(fs.existsSync(claude3pSkillPath)).toBe(false);
+
+      await mockRegistryFlow(skillName, version);
+
+      const result = await manager.installToAgents(`@kanyun/${skillName}@${version}`, [
+        'claude-cowork-3p',
+      ]);
+
+      // The skill must actually land in the claude-3p skills root.
+      expect(result.results.get('claude-cowork-3p')?.success).toBe(true);
+      expect(fs.existsSync(claude3pSkillPath)).toBe(true);
+      expect(fs.existsSync(path.join(claude3pSkillPath, 'SKILL.md'))).toBe(true);
+
+      // The returned path should point at the claude-3p location, not the
+      // canonical directory (this is what makes the CLI output truthful).
+      const installResult = result.results.get('claude-cowork-3p');
+      expect(installResult?.path).toBe(claude3pSkillPath);
+
+      // The manifest.json should record the new skill.
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(claude3pRoot, 'manifest.json'), 'utf-8'),
+      );
+      expect(manifest.skills).toEqual(
+        expect.arrayContaining([expect.objectContaining({ skillId: skillName })]),
+      );
+    } finally {
+      if (originalRoot === undefined) {
+        delete process.env[CLAUDE_3P_SKILLS_ROOT_ENV];
+      } else {
+        process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = originalRoot;
+      }
+    }
+  });
 });
 
 // ============================================================================
