@@ -132,8 +132,10 @@ export function getClaude3pSkillsPluginBase(options: ResolvePathOptions = {}): s
   }
 
   if (currentPlatform === 'win32') {
+    // Claude Desktop 3P stores data under %LOCALAPPDATA% (Local), not
+    // %APPDATA% (Roaming). Fall back to <home>/AppData/Local when unset.
     return path.join(
-      env.APPDATA ?? path.join(homeDir, 'AppData', 'Roaming'),
+      env.LOCALAPPDATA ?? path.join(homeDir, 'AppData', 'Local'),
       'Claude-3p',
       'local-agent-mode-sessions',
       'skills-plugin',

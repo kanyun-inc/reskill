@@ -6,7 +6,7 @@
  */
 
 import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
-import { dirname, isAbsolute, join, normalize, resolve } from 'node:path';
+import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { createGunzip } from 'node:zlib';
 import { extract, type Headers } from 'tar-stream';
 
@@ -52,19 +52,30 @@ export function isPathSafe(installDir: string, entryName: string): boolean {
   // Reject any path containing ".." component
   // Legitimate tarballs never need ".." - all files should be under skill-name/
   // This prevents both system-level escape (../../../etc) and skill-level escape (skill/../other)
-  const parts = entryName.split('/');
+  // Split on the platform separators: on Windows both '\' and '/' are separators,
+  // so a '..' hidden behind a backslash (skill\..\other) must also be caught. On
+  // POSIX, '\' is a valid filename character and must not be treated as a separator.
+  const separatorPattern = sep === '\\' ? /[\\/]/ : /\//;
+  const parts = entryName.split(separatorPattern);
   for (const part of parts) {
     if (part === '..') {
       return false;
     }
   }
 
-  // Final verification: resolved path must be within installDir
+  // Final verification: resolved path must be within installDir.
+  // Use path.relative so the check is separator-agnostic (works on Windows '\'
+  // and POSIX '/'); a hardcoded '/' rejected every entry on Windows.
   const resolvedInstallDir = resolve(installDir);
   const resolvedEntryPath = resolve(join(installDir, normalizedName));
+  const relativePath = relative(resolvedInstallDir, resolvedEntryPath);
 
-  // Entry must be within install directory (not equal to it, must be a subdirectory)
-  if (!resolvedEntryPath.startsWith(resolvedInstallDir + '/')) {
+  // Entry must be a strict subpath of installDir: non-empty, not escaping via
+  // "..", and not an absolute path.
+  if (!relativePath || relativePath === '..' || relativePath.startsWith(`..${sep}`)) {
+    return false;
+  }
+  if (isAbsolute(relativePath)) {
     return false;
   }
 

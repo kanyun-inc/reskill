@@ -90,15 +90,38 @@ description: Test skill for Claude Cowork 3P
       ),
     );
 
+    // Windows: Claude Desktop 3P stores data under %LOCALAPPDATA% (Local),
+    // not %APPDATA% (Roaming).
     expect(
       getClaude3pSkillsPluginBase({
         platform: 'win32',
         homeDir: 'C:\\Users\\Alice',
-        env: { APPDATA: 'C:\\Users\\Alice\\AppData\\Roaming' },
+        env: {
+          LOCALAPPDATA: 'C:\\Users\\Alice\\AppData\\Local',
+          APPDATA: 'C:\\Users\\Alice\\AppData\\Roaming',
+        },
       }),
     ).toBe(
       path.join(
-        'C:\\Users\\Alice\\AppData\\Roaming',
+        'C:\\Users\\Alice\\AppData\\Local',
+        'Claude-3p',
+        'local-agent-mode-sessions',
+        'skills-plugin',
+      ),
+    );
+
+    // Windows fallback: when LOCALAPPDATA is unset, derive Local from homeDir.
+    expect(
+      getClaude3pSkillsPluginBase({
+        platform: 'win32',
+        homeDir: 'C:\\Users\\Alice',
+        env: {},
+      }),
+    ).toBe(
+      path.join(
+        'C:\\Users\\Alice',
+        'AppData',
+        'Local',
         'Claude-3p',
         'local-agent-mode-sessions',
         'skills-plugin',
