@@ -38,6 +38,14 @@ describe('extractor (Windows path semantics)', () => {
       expect(isPathSafe(installDir, 'skill/../../etc/passwd')).toBe(false);
     });
 
+    it('blocks backslash-separated ".." components (Windows skill-level escape)', () => {
+      // On Windows '\' is a real separator, so these traverse directories and
+      // must be rejected even though split('/') alone would miss them.
+      expect(isPathSafe(installDir, 'skill\\..\\other-skill\\SKILL.md')).toBe(false);
+      expect(isPathSafe(installDir, 'skill\\..\\other-skill/SKILL.md')).toBe(false);
+      expect(isPathSafe(installDir, 'skill\\..\\..\\evil.txt')).toBe(false);
+    });
+
     it('still blocks absolute paths', () => {
       expect(isPathSafe(installDir, 'C:\\Windows\\System32\\evil.dll')).toBe(false);
     });

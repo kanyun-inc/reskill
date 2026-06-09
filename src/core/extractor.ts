@@ -52,7 +52,11 @@ export function isPathSafe(installDir: string, entryName: string): boolean {
   // Reject any path containing ".." component
   // Legitimate tarballs never need ".." - all files should be under skill-name/
   // This prevents both system-level escape (../../../etc) and skill-level escape (skill/../other)
-  const parts = entryName.split('/');
+  // Split on the platform separators: on Windows both '\' and '/' are separators,
+  // so a '..' hidden behind a backslash (skill\..\other) must also be caught. On
+  // POSIX, '\' is a valid filename character and must not be treated as a separator.
+  const separatorPattern = sep === '\\' ? /[\\/]/ : /\//;
+  const parts = entryName.split(separatorPattern);
   for (const part of parts) {
     if (part === '..') {
       return false;
