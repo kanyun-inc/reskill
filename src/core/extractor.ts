@@ -6,7 +6,7 @@
  */
 
 import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
-import { dirname, isAbsolute, join, normalize, resolve } from 'node:path';
+import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { createGunzip } from 'node:zlib';
 import { extract, type Headers } from 'tar-stream';
 
@@ -59,12 +59,19 @@ export function isPathSafe(installDir: string, entryName: string): boolean {
     }
   }
 
-  // Final verification: resolved path must be within installDir
+  // Final verification: resolved path must be within installDir.
+  // Use path.relative so the check is separator-agnostic (works on Windows '\'
+  // and POSIX '/'); a hardcoded '/' rejected every entry on Windows.
   const resolvedInstallDir = resolve(installDir);
   const resolvedEntryPath = resolve(join(installDir, normalizedName));
+  const relativePath = relative(resolvedInstallDir, resolvedEntryPath);
 
-  // Entry must be within install directory (not equal to it, must be a subdirectory)
-  if (!resolvedEntryPath.startsWith(resolvedInstallDir + '/')) {
+  // Entry must be a strict subpath of installDir: non-empty, not escaping via
+  // "..", and not an absolute path.
+  if (!relativePath || relativePath === '..' || relativePath.startsWith(`..${sep}`)) {
+    return false;
+  }
+  if (isAbsolute(relativePath)) {
     return false;
   }
 
