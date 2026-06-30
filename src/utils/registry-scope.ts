@@ -15,7 +15,7 @@ export const PUBLIC_REGISTRY = 'https://reskill.info/';
  * Hardcoded registry to scope mapping
  * TODO: Replace with dynamic fetching from /api/registry/info
  */
-const REGISTRY_SCOPE_MAP: Record<string, string> = {
+export const REGISTRY_SCOPE_MAP: Record<string, string> = {
   // rush-app (private registry, new)
   'https://rush-test.zhenguanyu.com': '@kanyun-test',
   'https://rush.zhenguanyu.com': '@kanyun',

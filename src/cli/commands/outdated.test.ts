@@ -70,6 +70,12 @@ describe('outdated command', () => {
       expect(jsonOption?.short).toBe('-j');
     });
 
+    it('should have --global option with -g shortcut', () => {
+      const globalOption = outdatedCommand.options.find((o) => o.long === '--global');
+      expect(globalOption).toBeDefined();
+      expect(globalOption?.short).toBe('-g');
+    });
+
     it('should have no required arguments', () => {
       const args = outdatedCommand.registeredArguments;
       expect(args.length).toBe(0);
