@@ -62,6 +62,12 @@ describe('update command', () => {
       expect(updateCommand.description().toLowerCase()).toContain('update');
     });
 
+    it('should have --global option with -g shortcut', () => {
+      const globalOption = updateCommand.options.find((o) => o.long === '--global');
+      expect(globalOption).toBeDefined();
+      expect(globalOption?.short).toBe('-g');
+    });
+
     it('should have optional skill argument', () => {
       const args = updateCommand.registeredArguments;
       expect(args.length).toBe(1);

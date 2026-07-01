@@ -68,7 +68,7 @@ npx reskill@latest <command>  # Or use npx directly
 | Option                    | Commands                                                      | Description                                                   |
 | ------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------- |
 | `--no-save`               | `install`                                                     | Install without saving to `skills.json` (for personal skills) |
-| `-g, --global`            | `install`, `uninstall`, `list`, `outdated`                    | Install/manage skills globally (user directory)               |
+| `-g, --global`            | `install`, `uninstall`, `list`, `outdated`, `update`          | Install/manage skills globally (user directory)               |
 | `-a, --agent <agents...>` | `install`                                                     | Specify target agents (e.g., `cursor`, `claude-code`)         |
 | `-a, --agent <agent>`     | `list`                                                        | List skills installed to a specific agent                     |
 | `--mode <mode>`           | `install`                                                     | Installation mode: `symlink` (default) or `copy`              |

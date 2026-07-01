@@ -68,7 +68,7 @@ npx reskill@latest <command>  # 或直接使用 npx
 | 选项                      | 适用命令                                                      | 说明                                         |
 | ------------------------- | ------------------------------------------------------------- | -------------------------------------------- |
 | `--no-save`               | `install`                                                     | 安装时不保存到 `skills.json`（用于个人技能） |
-| `-g, --global`            | `install`, `uninstall`, `list`, `outdated`                    | 全局安装/管理技能（用户目录）                |
+| `-g, --global`            | `install`, `uninstall`, `list`, `outdated`, `update`          | 全局安装/管理技能（用户目录）                |
 | `-a, --agent <agents...>` | `install`                                                     | 指定目标 Agent（如 `cursor`, `claude-code`） |
 | `-a, --agent <agent>`     | `list`                                                        | 列出安装到指定 Agent 的技能                  |
 | `--mode <mode>`           | `install`                                                     | 安装模式：`symlink`（默认）或 `copy`         |

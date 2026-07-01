@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitResolver } from './git-resolver.js';
 import { HttpResolver } from './http-resolver.js';
 import { RegistryResolver } from './registry-resolver.js';
-import { deriveDistTag, resolveLatestForChannel, SkillManager } from './skill-manager.js';
+import { deriveDistTag, readSourceMeta, resolveLatestForChannel, SkillManager, writeSourceMeta } from './skill-manager.js';
 
 describe('SkillManager', () => {
   let tempDir: string;
@@ -3586,6 +3586,173 @@ describe('checkOutdated with registry skills', () => {
     expect(results[0].updateAvailable).toBe(false);
 
     vi.restoreAllMocks();
+  });
+});
+
+// ============================================================================
+// .reskill-source.json tests
+// ============================================================================
+
+describe('reskill source metadata', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-source-meta-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  describe('writeSourceMeta / readSourceMeta', () => {
+    it('should write and read source metadata', () => {
+      const skillDir = path.join(tempDir, 'my-skill');
+      fs.mkdirSync(skillDir, { recursive: true });
+
+      const meta = {
+        source: 'registry:@kanyun/my-skill',
+        version: '1.0.0',
+        registry: 'https://rush.zhenguanyu.com',
+      };
+
+      writeSourceMeta(skillDir, meta);
+
+      const read = readSourceMeta(skillDir);
+      expect(read).not.toBeNull();
+      expect(read!.source).toBe('registry:@kanyun/my-skill');
+      expect(read!.version).toBe('1.0.0');
+      expect(read!.registry).toBe('https://rush.zhenguanyu.com');
+      expect(read!.installedAt).toBeDefined();
+    });
+
+    it('should return null when no source metadata exists', () => {
+      const skillDir = path.join(tempDir, 'no-meta');
+      fs.mkdirSync(skillDir, { recursive: true });
+
+      const read = readSourceMeta(skillDir);
+      expect(read).toBeNull();
+    });
+
+    it('should return null for malformed JSON', () => {
+      const skillDir = path.join(tempDir, 'bad-meta');
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, '.reskill-source.json'), 'not json');
+
+      const read = readSourceMeta(skillDir);
+      expect(read).toBeNull();
+    });
+  });
+
+  describe('checkOutdatedGlobal with source metadata', () => {
+    it('should use .reskill-source.json instead of probing when available', async () => {
+      // Setup global skills dir
+      const globalSkillsDir = path.join(tempDir, '.agents', 'skills');
+      const skillDir = path.join(globalSkillsDir, 'docz');
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '---\nname: docz\nversion: 0.10.0\ndescription: test\n---\n');
+
+      // Write source metadata
+      writeSourceMeta(skillDir, {
+        source: 'registry:@kanyun/docz',
+        version: '0.10.0',
+        registry: 'https://rush.zhenguanyu.com',
+      });
+
+      // Override HOME so global skills dir resolves to tempDir
+      const originalHome = process.env.HOME;
+      process.env.HOME = tempDir;
+
+      try {
+        const manager = new SkillManager(tempDir, { global: true });
+
+        const { RegistryClient } = await import('./registry-client.js');
+        vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+          name: '@kanyun/docz',
+          latest_version: '0.13.0',
+          dist_tags: [{ tag: 'latest', version: '0.13.0' }],
+        });
+
+        const results = await manager.checkOutdated();
+        const docz = results.find((r) => r.name === 'docz');
+
+        expect(docz).toBeDefined();
+        expect(docz!.current).toBe('0.10.0');
+        expect(docz!.latest).toBe('0.13.0');
+        expect(docz!.updateAvailable).toBe(true);
+      } finally {
+        process.env.HOME = originalHome;
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('should write back source metadata after successful probe', async () => {
+      const globalSkillsDir = path.join(tempDir, '.agents', 'skills');
+      const skillDir = path.join(globalSkillsDir, 'docz');
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '---\nname: docz\nversion: 0.10.0\ndescription: test\n---\n');
+
+      // No .reskill-source.json — should probe and write back
+      const originalHome = process.env.HOME;
+      process.env.HOME = tempDir;
+
+      try {
+        const manager = new SkillManager(tempDir, { global: true });
+
+        const { RegistryClient } = await import('./registry-client.js');
+        vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+          name: '@kanyun/docz',
+          latest_version: '0.13.0',
+          dist_tags: [{ tag: 'latest', version: '0.13.0' }],
+        });
+
+        await manager.checkOutdated();
+
+        // Verify .reskill-source.json was written back
+        const meta = readSourceMeta(skillDir);
+        expect(meta).not.toBeNull();
+        expect(meta!.source).toBe('registry:@kanyun/docz');
+        expect(meta!.registry).toBe('https://rush.zhenguanyu.com');
+      } finally {
+        process.env.HOME = originalHome;
+        vi.restoreAllMocks();
+      }
+    });
+  });
+});
+
+// ============================================================================
+// update -g tests
+// ============================================================================
+
+describe('SkillManager updateGlobal', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-update-global-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should skip skills without source metadata', async () => {
+    const globalSkillsDir = path.join(tempDir, '.agents', 'skills');
+    const skillDir = path.join(globalSkillsDir, 'unknown-skill');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '---\nname: unknown-skill\ndescription: test\n---\n');
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempDir;
+
+    try {
+      const manager = new SkillManager(tempDir, { global: true });
+      const updated = await manager.update();
+
+      expect(updated).toHaveLength(0);
+    } finally {
+      process.env.HOME = originalHome;
+      vi.restoreAllMocks();
+    }
   });
 });
 
