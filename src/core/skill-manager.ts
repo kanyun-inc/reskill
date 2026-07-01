@@ -15,7 +15,9 @@ import {
   isDirectory,
   isSymlink,
   listDir,
+  readJson,
   remove,
+  writeJson,
 } from '../utils/fs.js';
 import { parseGitUrl } from '../utils/git.js';
 import { logger } from '../utils/logger.js';
@@ -104,6 +106,36 @@ export function resolveLatestForChannel(
   }
 
   return undefined;
+}
+
+const SOURCE_META_FILE = '.reskill-source.json';
+
+export interface SourceMeta {
+  source: string;
+  version: string;
+  registry?: string;
+  installedAt: string;
+}
+
+export function writeSourceMeta(
+  skillDir: string,
+  meta: Omit<SourceMeta, 'installedAt'>,
+): void {
+  const data: SourceMeta = {
+    ...meta,
+    installedAt: new Date().toISOString(),
+  };
+  writeJson(path.join(skillDir, SOURCE_META_FILE), data);
+}
+
+export function readSourceMeta(skillDir: string): SourceMeta | null {
+  const filePath = path.join(skillDir, SOURCE_META_FILE);
+  if (!exists(filePath)) return null;
+  try {
+    return readJson<SourceMeta>(filePath);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -578,6 +610,10 @@ export class SkillManager {
    * Update skill
    */
   async update(name?: string): Promise<InstalledSkill[]> {
+    if (this.isGlobal) {
+      return this.updateGlobal(name);
+    }
+
     const updated: InstalledSkill[] = [];
     const targetAgents = await detectInstalledAgents();
 
@@ -638,6 +674,57 @@ export class SkillManager {
         } catch (error) {
           logger.error(`Failed to update ${skillName}: ${(error as Error).message}`);
         }
+      }
+    }
+
+    return updated;
+  }
+
+  /**
+   * Update globally installed skills.
+   * Uses .reskill-source.json to determine the source for each skill.
+   */
+  private async updateGlobal(name?: string): Promise<InstalledSkill[]> {
+    const installed = this.list();
+    const targetAgents = await detectInstalledAgents();
+    const updated: InstalledSkill[] = [];
+
+    const skillsToUpdate = name
+      ? installed.filter((s) => s.name === name)
+      : installed;
+
+    if (name && skillsToUpdate.length === 0) {
+      logger.error(`Skill ${name} not found in global skills`);
+      return [];
+    }
+
+    for (const skill of skillsToUpdate) {
+      if (skill.isLinked) {
+        logger.info(`${skill.name} is linked, skipping`);
+        continue;
+      }
+
+      // Read source metadata
+      const sourceMeta = readSourceMeta(skill.path);
+      if (!sourceMeta?.source) {
+        logger.warn(`${skill.name}: no source metadata, skipping (run 'reskill outdated -g' first to detect sources)`);
+        continue;
+      }
+
+      try {
+        // Reconstruct ref from source metadata
+        const ref = sourceMeta.source.startsWith('registry:')
+          ? sourceMeta.source.slice('registry:'.length)
+          : sourceMeta.source;
+
+        const result = await this.installForUpdate(ref, targetAgents, {
+          force: true,
+          save: false,
+          registry: sourceMeta.registry,
+        });
+        updated.push(result);
+      } catch (error) {
+        logger.error(`Failed to update ${skill.name}: ${(error as Error).message}`);
       }
     }
 
@@ -1097,6 +1184,19 @@ export class SkillManager {
 
       const currentVersion = skill.version || 'unknown';
 
+      // Try .reskill-source.json first (written on install or by previous probe)
+      const sourceMeta = readSourceMeta(skill.path);
+      if (sourceMeta?.source?.startsWith('registry:')) {
+        const result = await this.checkRegistrySkillUpdate(
+          skill.name,
+          currentVersion,
+          sourceMeta.source.slice('registry:'.length),
+          sourceMeta.registry,
+        );
+        results.push(result);
+        continue;
+      }
+
       // Scoped names (@scope/name) → direct registry lookup
       if (skill.name.startsWith('@') && skill.name.includes('/')) {
         results.push(await this.checkRegistrySkillUpdate(skill.name, currentVersion, skill.name));
@@ -1104,7 +1204,7 @@ export class SkillManager {
       }
 
       // Unscoped global skills — probe known registries with @scope/name
-      const probed = await this.probeRegistriesForSkill(skill.name, currentVersion, scopeUrls);
+      const probed = await this.probeRegistriesForSkill(skill.name, currentVersion, scopeUrls, skill.path);
       results.push(probed);
     }
 
@@ -1141,6 +1241,7 @@ export class SkillManager {
     name: string,
     currentVersion: string,
     scopeUrls: Array<{ scope: string; url: string }>,
+    skillPath?: string,
   ): Promise<{
     name: string;
     current: string;
@@ -1161,6 +1262,19 @@ export class SkillManager {
           semver.valid(currentVersion) !== null &&
           semver.valid(latest) !== null &&
           semver.gt(latest, currentVersion);
+
+        // Write back source metadata for future lookups
+        if (skillPath) {
+          try {
+            writeSourceMeta(skillPath, {
+              source: `registry:${fullName}`,
+              version: currentVersion,
+              registry: url,
+            });
+          } catch {
+            // Non-critical, skip silently
+          }
+        }
 
         return { name, current: currentVersion, latest, updateAvailable };
       } catch {
@@ -1429,6 +1543,18 @@ export class SkillManager {
         this.config.addSkill(skillInfo.name, `${baseRefForSave}#${skillInfo.name}`);
       }
 
+      if (effectivelyGlobal) {
+        const skillInstallPath = this.getSkillPath(skillInfo.name);
+        try {
+          writeSourceMeta(skillInstallPath, {
+            source: skillSource,
+            version: semanticVersion,
+          });
+        } catch {
+          // Non-critical
+        }
+      }
+
       const successCount = Array.from(results.values()).filter((r) => r.success).length;
       logger.success(`Installed ${skillInfo.name}@${semanticVersion} to ${successCount} agent(s)`);
 
@@ -1501,10 +1627,9 @@ export class SkillManager {
 
     // Update lock file (project mode only, skip for effectively-global installs)
     const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+    const gitSource = `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? `/${parsed.subPath}` : ''}`;
     if (!effectivelyGlobal) {
-      const lockSource =
-        registryContext?.lockSource ??
-        `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? `/${parsed.subPath}` : ''}`;
+      const lockSource = registryContext?.lockSource ?? gitSource;
       this.lockManager.lockSkill(skillName, {
         source: lockSource,
         version: semanticVersion,
@@ -1520,6 +1645,20 @@ export class SkillManager {
       this.config.ensureExists();
       const configRef = registryContext?.configRef ?? this.config.normalizeSkillRef(ref);
       this.config.addSkill(skillName, configRef);
+    }
+
+    // Write source metadata for global installs
+    if (effectivelyGlobal) {
+      const skillPath = this.getSkillPath(skillName);
+      try {
+        writeSourceMeta(skillPath, {
+          source: registryContext?.lockSource ?? gitSource,
+          version: semanticVersion,
+          registry: registryContext?.registryUrl,
+        });
+      } catch {
+        // Non-critical
+      }
     }
 
     // Count results
@@ -1540,7 +1679,7 @@ export class SkillManager {
       name: skillName,
       path: sourcePath,
       version: semanticVersion,
-      source: `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? `/${parsed.subPath}` : ''}`,
+      source: gitSource,
     };
 
     return { skill, results };
@@ -1602,8 +1741,9 @@ export class SkillManager {
 
     // Update lock file (project mode only, skip for effectively-global installs)
     const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);
+    const httpSource = `http:${httpInfo.host}/${skillName}`;
     if (!effectivelyGlobal) {
-      const lockSource = registryContext?.lockSource ?? `http:${httpInfo.host}/${skillName}`;
+      const lockSource = registryContext?.lockSource ?? httpSource;
       this.lockManager.lockSkill(skillName, {
         source: lockSource,
         version: semanticVersion,
@@ -1619,6 +1759,20 @@ export class SkillManager {
       this.config.ensureExists();
       const configRef = registryContext?.configRef ?? ref;
       this.config.addSkill(skillName, configRef);
+    }
+
+    // Write source metadata for global installs
+    if (effectivelyGlobal) {
+      const skillInstallPath = this.getSkillPath(skillName);
+      try {
+        writeSourceMeta(skillInstallPath, {
+          source: registryContext?.lockSource ?? httpSource,
+          version: semanticVersion,
+          registry: registryContext?.registryUrl,
+        });
+      } catch {
+        // Non-critical
+      }
     }
 
     // Count results
@@ -1640,7 +1794,7 @@ export class SkillManager {
       name: skillName,
       path: sourcePath,
       version: semanticVersion,
-      source: `http:${httpInfo.host}/${skillName}`,
+      source: httpSource,
     };
 
     return { skill, results };
@@ -1853,6 +2007,20 @@ export class SkillManager {
             this.config.addRegistry(registryName, options.registry);
             this.config.save();
           }
+        }
+      }
+
+      // Write source metadata for global installs
+      if (effectivelyGlobal) {
+        const skillInstallPath = this.getSkillPath(shortName);
+        try {
+          writeSourceMeta(skillInstallPath, {
+            source: `registry:${resolvedParsed.fullName}`,
+            version,
+            registry: resolvedRegistryUrl,
+          });
+        } catch {
+          // Non-critical
         }
       }
 
@@ -2104,6 +2272,20 @@ export class SkillManager {
             this.config.addRegistry(registryName, options.registry);
             this.config.save();
           }
+        }
+      }
+
+      // Write source metadata for global installs
+      if (effectivelyGlobal) {
+        const skillInstallPath = this.getSkillPath(skillName);
+        try {
+          writeSourceMeta(skillInstallPath, {
+            source: `registry:${parsed.fullName}`,
+            version: semanticVersion,
+            registry: registryUrl,
+          });
+        } catch {
+          // Non-critical
         }
       }
 

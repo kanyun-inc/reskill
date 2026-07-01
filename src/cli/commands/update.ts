@@ -11,15 +11,20 @@ export const updateCommand = new Command('update')
   .alias('up')
   .description('Update installed skills')
   .argument('[skill]', 'Skill name to update (updates all if not specified)')
-  .action(async (skill) => {
-    const configLoader = new ConfigLoader();
+  .option('-g, --global', 'Update globally installed skills')
+  .action(async (skill, options) => {
+    const isGlobal = options.global || false;
 
-    if (!configLoader.exists()) {
-      logger.error("skills.json not found. Run 'reskill init' first.");
-      process.exit(1);
+    if (!isGlobal) {
+      const configLoader = new ConfigLoader();
+
+      if (!configLoader.exists()) {
+        logger.error("skills.json not found. Run 'reskill init' first.");
+        process.exit(1);
+      }
     }
 
-    const skillManager = new SkillManager();
+    const skillManager = new SkillManager(undefined, { global: isGlobal });
     const spinner = ora(skill ? `Updating ${skill}...` : 'Updating all skills...').start();
 
     try {
