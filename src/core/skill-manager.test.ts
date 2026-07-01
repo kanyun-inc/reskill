@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitResolver } from './git-resolver.js';
 import { HttpResolver } from './http-resolver.js';
 import { RegistryResolver } from './registry-resolver.js';
-import { SkillManager } from './skill-manager.js';
+import { deriveDistTag, resolveLatestForChannel, SkillManager } from './skill-manager.js';
 
 describe('SkillManager', () => {
   let tempDir: string;
@@ -3269,6 +3269,323 @@ describe('SkillManager isEffectivelyGlobal behavior for claude-cowork-3p', () =>
 
     const lock = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.lock'), 'utf-8'));
     expect(lock.skills['test-skill']).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// deriveDistTag tests
+// ============================================================================
+
+describe('deriveDistTag', () => {
+  it('should return "latest" for stable versions', () => {
+    expect(deriveDistTag('1.0.0')).toBe('latest');
+    expect(deriveDistTag('0.1.0')).toBe('latest');
+    expect(deriveDistTag('10.20.30')).toBe('latest');
+  });
+
+  it('should return channel name for prerelease versions', () => {
+    expect(deriveDistTag('1.0.1-alpha.0')).toBe('alpha');
+    expect(deriveDistTag('1.2.4-beta.3')).toBe('beta');
+    expect(deriveDistTag('2.0.0-rc.1')).toBe('rc');
+    expect(deriveDistTag('1.0.0-next.5')).toBe('next');
+  });
+
+  it('should return "next" for numeric-only prerelease', () => {
+    expect(deriveDistTag('1.0.0-0')).toBe('next');
+    expect(deriveDistTag('1.0.0-0.3.7')).toBe('next');
+  });
+
+  it('should ignore build metadata', () => {
+    expect(deriveDistTag('1.0.0+build.123')).toBe('latest');
+    expect(deriveDistTag('1.0.0+2024-01-15')).toBe('latest');
+  });
+
+  it('should handle prerelease with build metadata', () => {
+    expect(deriveDistTag('1.0.1-beta.1+build.5')).toBe('beta');
+  });
+
+  it('should return "latest" for unknown/fallback input', () => {
+    expect(deriveDistTag('unknown')).toBe('latest');
+  });
+});
+
+// ============================================================================
+// resolveLatestForChannel tests
+// ============================================================================
+
+describe('resolveLatestForChannel', () => {
+  it('should return @latest dist-tag for stable version', () => {
+    const info = {
+      latest_version: '1.0.0',
+      dist_tags: [
+        { tag: 'latest', version: '1.1.0' },
+        { tag: 'beta', version: '2.0.0-beta.1' },
+      ],
+    };
+    expect(resolveLatestForChannel('1.0.0', info)).toBe('1.1.0');
+  });
+
+  it('should fall back to latest_version for stable when no dist_tags', () => {
+    const info = { latest_version: '1.2.0' };
+    expect(resolveLatestForChannel('1.0.0', info)).toBe('1.2.0');
+  });
+
+  it('should NOT return beta version for stable user', () => {
+    const info = {
+      latest_version: '1.0.0',
+      dist_tags: [
+        { tag: 'latest', version: '1.0.0' },
+        { tag: 'beta', version: '1.1.0-beta.0' },
+      ],
+    };
+    expect(resolveLatestForChannel('1.0.0', info)).toBe('1.0.0');
+  });
+
+  it('should return channel tag for prerelease version', () => {
+    const info = {
+      latest_version: '0.9.0',
+      dist_tags: [
+        { tag: 'latest', version: '0.9.0' },
+        { tag: 'beta', version: '1.0.0-beta.3' },
+      ],
+    };
+    expect(resolveLatestForChannel('1.0.0-beta.1', info)).toBe('1.0.0-beta.3');
+  });
+
+  it('should NOT fall back to latest_version for prerelease when channel tag missing', () => {
+    const info = {
+      latest_version: '1.0.0',
+      dist_tags: [{ tag: 'latest', version: '1.0.0' }],
+    };
+    expect(resolveLatestForChannel('1.0.0-beta.1', info)).toBeUndefined();
+  });
+
+  it('should return undefined for prerelease when no dist_tags at all', () => {
+    const info = { latest_version: '1.0.0' };
+    expect(resolveLatestForChannel('1.0.0-rc.1', info)).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// checkOutdated registry tests
+// ============================================================================
+
+describe('checkOutdated with registry skills', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-outdated-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function setupProject(
+    skills: Record<string, string>,
+    lockedSkills: Record<string, object>,
+  ): SkillManager {
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.json'),
+      JSON.stringify({ skills, registries: { github: 'https://github.com' }, defaults: {} }),
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'skills.lock'),
+      JSON.stringify({ lockfileVersion: 1, skills: lockedSkills }),
+    );
+    return new SkillManager(tempDir);
+  }
+
+  it('should detect registry skill with available update', async () => {
+    const manager = setupProject(
+      { 'my-skill': '@kanyun/my-skill@1.0.0' },
+      {
+        'my-skill': {
+          source: 'registry:@kanyun/my-skill',
+          version: '1.0.0',
+          ref: '1.0.0',
+          resolved: 'https://rush-test.zhenguanyu.com',
+          commit: '',
+          registry: 'https://rush-test.zhenguanyu.com',
+        },
+      },
+    );
+
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: '@kanyun/my-skill',
+      latest_version: '1.1.0',
+      dist_tags: [
+        { tag: 'latest', version: '1.1.0' },
+      ],
+    });
+
+    const results = await manager.checkOutdated();
+
+    expect(results).toHaveLength(1);
+    expect(results[0].name).toBe('my-skill');
+    expect(results[0].current).toBe('1.0.0');
+    expect(results[0].latest).toBe('1.1.0');
+    expect(results[0].updateAvailable).toBe(true);
+
+    vi.restoreAllMocks();
+  });
+
+  it('should report up-to-date for registry skill on latest version', async () => {
+    const manager = setupProject(
+      { 'my-skill': '@kanyun/my-skill@1.0.0' },
+      {
+        'my-skill': {
+          source: 'registry:@kanyun/my-skill',
+          version: '1.0.0',
+          ref: '1.0.0',
+          resolved: 'https://rush-test.zhenguanyu.com',
+          commit: '',
+          registry: 'https://rush-test.zhenguanyu.com',
+        },
+      },
+    );
+
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: '@kanyun/my-skill',
+      latest_version: '1.0.0',
+      dist_tags: [{ tag: 'latest', version: '1.0.0' }],
+    });
+
+    const results = await manager.checkOutdated();
+
+    expect(results[0].updateAvailable).toBe(false);
+
+    vi.restoreAllMocks();
+  });
+
+  it('should check prerelease channel tag instead of latest', async () => {
+    const manager = setupProject(
+      { 'my-skill': '@kanyun/my-skill@1.0.0-beta.1' },
+      {
+        'my-skill': {
+          source: 'registry:@kanyun/my-skill',
+          version: '1.0.0-beta.1',
+          ref: '1.0.0-beta.1',
+          resolved: 'https://rush-test.zhenguanyu.com',
+          commit: '',
+          registry: 'https://rush-test.zhenguanyu.com',
+        },
+      },
+    );
+
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: '@kanyun/my-skill',
+      latest_version: '0.9.0',
+      dist_tags: [
+        { tag: 'latest', version: '0.9.0' },
+        { tag: 'beta', version: '1.0.0-beta.3' },
+      ],
+    });
+
+    const results = await manager.checkOutdated();
+
+    expect(results[0].current).toBe('1.0.0-beta.1');
+    expect(results[0].latest).toBe('1.0.0-beta.3');
+    expect(results[0].updateAvailable).toBe(true);
+
+    vi.restoreAllMocks();
+  });
+
+  it('should not fall back to latest when prerelease channel tag not found', async () => {
+    const manager = setupProject(
+      { 'my-skill': '@kanyun/my-skill@1.0.0-rc.1' },
+      {
+        'my-skill': {
+          source: 'registry:@kanyun/my-skill',
+          version: '1.0.0-rc.1',
+          ref: '1.0.0-rc.1',
+          resolved: 'https://rush-test.zhenguanyu.com',
+          commit: '',
+          registry: 'https://rush-test.zhenguanyu.com',
+        },
+      },
+    );
+
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: '@kanyun/my-skill',
+      latest_version: '1.1.0',
+      dist_tags: [{ tag: 'latest', version: '1.1.0' }],
+    });
+
+    const results = await manager.checkOutdated();
+
+    expect(results[0].latest).toBe('unknown');
+    expect(results[0].updateAvailable).toBe(false);
+
+    vi.restoreAllMocks();
+  });
+
+  it('should not show beta as update for stable version', async () => {
+    const manager = setupProject(
+      { 'my-skill': '@kanyun/my-skill@1.0.0' },
+      {
+        'my-skill': {
+          source: 'registry:@kanyun/my-skill',
+          version: '1.0.0',
+          ref: '1.0.0',
+          resolved: 'https://rush-test.zhenguanyu.com',
+          commit: '',
+          registry: 'https://rush-test.zhenguanyu.com',
+        },
+      },
+    );
+
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+      name: '@kanyun/my-skill',
+      latest_version: '1.0.0',
+      dist_tags: [
+        { tag: 'latest', version: '1.0.0' },
+        { tag: 'beta', version: '1.1.0-beta.0' },
+      ],
+    });
+
+    const results = await manager.checkOutdated();
+
+    expect(results[0].current).toBe('1.0.0');
+    expect(results[0].latest).toBe('1.0.0');
+    expect(results[0].updateAvailable).toBe(false);
+
+    vi.restoreAllMocks();
+  });
+
+  it('should handle registry API failure gracefully', async () => {
+    const manager = setupProject(
+      { 'my-skill': '@kanyun/my-skill@1.0.0' },
+      {
+        'my-skill': {
+          source: 'registry:@kanyun/my-skill',
+          version: '1.0.0',
+          ref: '1.0.0',
+          resolved: 'https://rush-test.zhenguanyu.com',
+          commit: '',
+          registry: 'https://rush-test.zhenguanyu.com',
+        },
+      },
+    );
+
+    const { RegistryClient } = await import('./registry-client.js');
+    vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockRejectedValue(
+      new Error('Network error'),
+    );
+
+    const results = await manager.checkOutdated();
+
+    expect(results).toHaveLength(1);
+    expect(results[0].current).toBe('1.0.0');
+    expect(results[0].latest).toBe('unknown');
+    expect(results[0].updateAvailable).toBe(false);
+
+    vi.restoreAllMocks();
   });
 });
 

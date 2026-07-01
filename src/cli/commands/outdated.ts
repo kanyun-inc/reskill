@@ -11,26 +11,36 @@ import { logger } from '../../utils/logger.js';
 export const outdatedCommand = new Command('outdated')
   .description('Check for outdated skills')
   .option('-j, --json', 'Output as JSON')
+  .option('-g, --global', 'Check globally installed skills')
   .action(async (options) => {
-    const configLoader = new ConfigLoader();
+    const isGlobal = options.global || false;
 
-    if (!configLoader.exists()) {
-      logger.error("skills.json not found. Run 'reskill init' first.");
-      process.exit(1);
+    if (!isGlobal) {
+      const configLoader = new ConfigLoader();
+
+      if (!configLoader.exists()) {
+        logger.error("skills.json not found. Run 'reskill init' first.");
+        process.exit(1);
+      }
+
+      const skills = configLoader.getSkills();
+      if (Object.keys(skills).length === 0) {
+        logger.info('No skills defined in skills.json');
+        return;
+      }
     }
 
-    const skills = configLoader.getSkills();
-    if (Object.keys(skills).length === 0) {
-      logger.info('No skills defined in skills.json');
-      return;
-    }
-
-    const skillManager = new SkillManager();
+    const skillManager = new SkillManager(undefined, { global: isGlobal });
     const spinner = ora('Checking for updates...').start();
 
     try {
       const results = await skillManager.checkOutdated();
       spinner.stop();
+
+      if (results.length === 0) {
+        logger.info(isGlobal ? 'No globally installed skills found' : 'No skills to check');
+        return;
+      }
 
       if (options.json) {
         console.log(JSON.stringify(results, null, 2));

@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import * as semver from 'semver';
 import type {
   InstalledSkill,
   InstallOptions,
@@ -23,6 +24,7 @@ import {
   getScopeForRegistry,
   getShortName,
   parseSkillIdentifier,
+  REGISTRY_SCOPE_MAP,
   type ScopeRegistries,
 } from '../utils/registry-scope.js';
 import {
@@ -55,6 +57,54 @@ import {
   type ParsedSkillWithPath,
   parseSkillFromDir,
 } from './skill-parser.js';
+
+/**
+ * Derive the dist-tag channel from a semver version string.
+ * Mirrors the server-side deriveDefaultTag logic.
+ *
+ * @internal Exported for testing
+ */
+export function deriveDistTag(version: string): string {
+  const core = version.split('+')[0];
+  const dashIndex = core.indexOf('-');
+  if (dashIndex === -1) {
+    return 'latest';
+  }
+  const channel = core
+    .slice(dashIndex + 1)
+    .split('.')
+    .find((id) => id.length > 0 && !/^\d+$/.test(id));
+  return channel || 'next';
+}
+
+/**
+ * Resolve the latest version for the current version's channel from registry info.
+ *
+ * - Stable channel (latest): prefer dist_tags[@latest], fall back to latest_version.
+ * - Prerelease channel (beta, alpha, …): ONLY use dist_tags[@channel], no fallback.
+ *   A new beta on the registry should not prompt an update for stable users,
+ *   and stable releases should not prompt an update for beta users.
+ *
+ * @internal Exported for testing
+ */
+export function resolveLatestForChannel(
+  currentVersion: string,
+  info: { latest_version?: string; dist_tags?: Array<{ tag: string; version: string }> },
+): string | undefined {
+  const tag = deriveDistTag(currentVersion);
+
+  if (info.dist_tags) {
+    const match = info.dist_tags.find((t) => t.tag === tag)?.version;
+    if (match) return match;
+  }
+
+  // Only fall back to latest_version for the stable channel
+  if (tag === 'latest') {
+    return info.latest_version;
+  }
+
+  return undefined;
+}
 
 /**
  * SkillManager configuration options
@@ -913,9 +963,29 @@ export class SkillManager {
   }
 
   /**
-   * Check for outdated skills
+   * Check for outdated skills.
+   *
+   * In project mode, reads skills.json and skills.lock.
+   * In global mode, scans ~/.agents/skills/ and checks registry for scoped skills.
    */
   async checkOutdated(): Promise<
+    Array<{
+      name: string;
+      current: string;
+      latest: string;
+      updateAvailable: boolean;
+    }>
+  > {
+    if (this.isGlobal) {
+      return this.checkOutdatedGlobal();
+    }
+    return this.checkOutdatedProject();
+  }
+
+  /**
+   * Check for outdated skills in project mode (from skills.json + skills.lock)
+   */
+  private async checkOutdatedProject(): Promise<
     Array<{
       name: string;
       current: string;
@@ -950,7 +1020,15 @@ export class SkillManager {
           continue;
         }
 
-        // Parse latest version
+        // Registry sources - query registry API for latest version
+        if (this.isRegistrySource(ref)) {
+          results.push(
+            await this.checkRegistrySkillUpdate(name, currentVersion, ref, locked?.registry),
+          );
+          continue;
+        }
+
+        // Git sources - parse latest version
         const parsed = this.resolver.parseRef(ref);
         const repoUrl = this.resolver.buildRepoUrl(parsed);
 
@@ -983,6 +1061,155 @@ export class SkillManager {
     }
 
     return results;
+  }
+
+  /**
+   * Check for outdated skills in global mode (scan ~/.agents/skills/)
+   */
+  private async checkOutdatedGlobal(): Promise<
+    Array<{
+      name: string;
+      current: string;
+      latest: string;
+      updateAvailable: boolean;
+    }>
+  > {
+    const installed = this.list();
+    const results: Array<{
+      name: string;
+      current: string;
+      latest: string;
+      updateAvailable: boolean;
+    }> = [];
+
+    const scopeUrls = this.collectScopeRegistries();
+
+    for (const skill of installed) {
+      if (skill.isLinked) {
+        results.push({
+          name: skill.name,
+          current: 'linked',
+          latest: 'n/a',
+          updateAvailable: false,
+        });
+        continue;
+      }
+
+      const currentVersion = skill.version || 'unknown';
+
+      // Scoped names (@scope/name) → direct registry lookup
+      if (skill.name.startsWith('@') && skill.name.includes('/')) {
+        results.push(await this.checkRegistrySkillUpdate(skill.name, currentVersion, skill.name));
+        continue;
+      }
+
+      // Unscoped global skills — probe known registries with @scope/name
+      const probed = await this.probeRegistriesForSkill(skill.name, currentVersion, scopeUrls);
+      results.push(probed);
+    }
+
+    return results;
+  }
+
+  /**
+   * Collect unique scope → URL pairs from config + hardcoded map.
+   */
+  private collectScopeRegistries(): Array<{ scope: string; url: string }> {
+    const seen = new Map<string, string>();
+
+    // From skills.json registries (higher priority)
+    for (const [name, url] of Object.entries(this.config.getRegistries())) {
+      if (name.startsWith('@')) {
+        seen.set(name, url);
+      }
+    }
+
+    // From hardcoded scope map (deduplicate, skip test/localhost)
+    for (const [url, scope] of Object.entries(REGISTRY_SCOPE_MAP)) {
+      if (!seen.has(scope) && !url.includes('localhost') && !scope.includes('-test')) {
+        seen.set(scope, url);
+      }
+    }
+
+    return Array.from(seen, ([scope, url]) => ({ scope, url }));
+  }
+
+  /**
+   * Probe known registries to find an unscoped skill and check for updates.
+   */
+  private async probeRegistriesForSkill(
+    name: string,
+    currentVersion: string,
+    scopeUrls: Array<{ scope: string; url: string }>,
+  ): Promise<{
+    name: string;
+    current: string;
+    latest: string;
+    updateAvailable: boolean;
+  }> {
+    for (const { scope, url } of scopeUrls) {
+      const fullName = `${scope}/${name}`;
+      try {
+        const client = new RegistryClient({ registry: url });
+        const info = await client.getSkillInfo(fullName);
+
+        const latest = resolveLatestForChannel(currentVersion, info);
+        if (!latest) continue;
+
+        const updateAvailable =
+          currentVersion !== 'unknown' &&
+          semver.valid(currentVersion) !== null &&
+          semver.valid(latest) !== null &&
+          semver.gt(latest, currentVersion);
+
+        return { name, current: currentVersion, latest, updateAvailable };
+      } catch {
+        // Not found on this registry, try next
+      }
+    }
+
+    return { name, current: currentVersion, latest: 'n/a (unknown source)', updateAvailable: false };
+  }
+
+  /**
+   * Check a single registry skill for updates.
+   * Prerelease-aware: checks the matching channel tag (beta, alpha, rc, etc.)
+   * instead of @latest when the current version is a prerelease.
+   */
+  private async checkRegistrySkillUpdate(
+    name: string,
+    currentVersion: string,
+    ref: string,
+    cachedRegistryUrl?: string,
+  ): Promise<{
+    name: string;
+    current: string;
+    latest: string;
+    updateAvailable: boolean;
+  }> {
+    try {
+      const parsed = parseSkillIdentifier(ref);
+      const registryUrl = cachedRegistryUrl || (await this.resolveRegistryUrl(ref));
+      const client = new RegistryClient({ registry: registryUrl });
+      const info = await client.getSkillInfo(parsed.fullName);
+
+      const latest = resolveLatestForChannel(currentVersion, info);
+
+      if (!latest) {
+        return { name, current: currentVersion, latest: 'unknown', updateAvailable: false };
+      }
+
+      const updateAvailable =
+        currentVersion !== 'unknown' &&
+        semver.valid(currentVersion) !== null &&
+        semver.valid(latest) !== null &&
+        semver.gt(latest, currentVersion);
+
+      return { name, current: currentVersion, latest, updateAvailable };
+    } catch (error) {
+      logger.debug(`Failed to check registry skill ${name}: ${(error as Error).message}`);
+      return { name, current: currentVersion, latest: 'unknown', updateAvailable: false };
+    }
   }
 
   // ============================================================================
