@@ -1000,8 +1000,15 @@ export class SkillManager {
     // Read metadata from SKILL.md (sole source per agentskills.io spec)
     const skillMd = this.getSkillMetadataFromDir(skillPath);
 
-    // Version priority: locked > SKILL.md > 'unknown'
-    const version = isLinked ? 'local' : locked?.version || skillMd?.version || 'unknown';
+    // .reskill-source.json is the global-install counterpart to skills.lock: written by
+    // writeSourceMeta() whenever a skill is installed effectively-globally (see install path),
+    // since global/no-manifest installs never get a skills.lock entry.
+    const sourceMeta = readSourceMeta(skillPath);
+
+    // Version priority: locked (project mode) > sourceMeta (global mode) > SKILL.md > 'unknown'.
+    // Applies regardless of symlink status; callers that care about symlink installs read
+    // `isLinked` separately, e.g. list.ts appends "(linked)".
+    const version = locked?.version || sourceMeta?.version || skillMd?.version || 'unknown';
 
     return {
       name,
@@ -1263,12 +1270,17 @@ export class SkillManager {
           semver.valid(latest) !== null &&
           semver.gt(latest, currentVersion);
 
-        // Write back source metadata for future lookups
+        // Write back source metadata for future lookups. If we never had a known
+        // current version, persisting the literal 'unknown' string would make every
+        // future lookup a no-op — use the newly-resolved latest as a best-effort
+        // baseline instead so subsequent list/outdated calls have a real version to
+        // compare against (this round's updateAvailable check above already ran
+        // against the true previous currentVersion, so it isn't affected).
         if (skillPath) {
           try {
             writeSourceMeta(skillPath, {
               source: `registry:${fullName}`,
-              version: currentVersion,
+              version: currentVersion === 'unknown' ? latest : currentVersion,
               registry: url,
             });
           } catch {

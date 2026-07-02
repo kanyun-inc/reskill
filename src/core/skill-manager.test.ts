@@ -2565,6 +2565,65 @@ description: A skill without version
       // SKILL.md has no version, returns 'unknown'
       expect(skill?.version).toBe('unknown');
     });
+
+    it('should use version from SKILL.md for a symlinked (global) install, not the literal string "local"', () => {
+      // Simulate a global install: real skill lives elsewhere, canonical path is a symlink to it
+      // (this mirrors `reskill install -g` / the default symlink install mode)
+      const realSkillPath = path.join(tempDir, 'real-skills', 'linked-skill');
+      fs.mkdirSync(realSkillPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(realSkillPath, 'SKILL.md'),
+        `---
+name: linked-skill
+description: A symlinked skill
+version: 2.3.0
+---
+
+# Linked Skill
+`,
+      );
+
+      const canonicalDir = path.join(tempDir, '.agents', 'skills');
+      fs.mkdirSync(canonicalDir, { recursive: true });
+      fs.symlinkSync(realSkillPath, path.join(canonicalDir, 'linked-skill'), 'dir');
+
+      const skill = skillManager.getInstalledSkill('linked-skill');
+      expect(skill).not.toBeNull();
+      expect(skill?.isLinked).toBe(true);
+      // Regression: previously this returned the literal string 'local' for any symlinked
+      // install, discarding the real version from SKILL.md/lockfile.
+      expect(skill?.version).toBe('2.3.0');
+    });
+
+    it('should fall back to .reskill-source.json version when SKILL.md has no version (global registry install)', () => {
+      // Simulate a registry-installed skill whose published SKILL.md never had a `version:`
+      // frontmatter field, but writeSourceMeta() recorded the resolved registry version at
+      // install time (this is what `reskill install -g @scope/name` does for effectively-global
+      // installs, since they never get a skills.lock entry).
+      const skillPath = path.join(tempDir, '.agents', 'skills', 'registry-skill');
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(skillPath, 'SKILL.md'),
+        `---
+name: registry-skill
+description: A registry skill without a version header
+---
+
+# Registry Skill
+`,
+      );
+      writeSourceMeta(skillPath, {
+        source: 'registry:@scope/registry-skill',
+        version: '1.0.1',
+      });
+
+      const skill = skillManager.getInstalledSkill('registry-skill');
+      expect(skill).not.toBeNull();
+      // Regression: previously .reskill-source.json was never consulted by getInstalledSkill,
+      // so this fell all the way through to 'unknown' even though the real installed version
+      // was known and recorded on disk.
+      expect(skill?.version).toBe('1.0.1');
+    });
   });
 
   describe('list() should include agents field', () => {
@@ -3712,6 +3771,51 @@ describe('reskill source metadata', () => {
         expect(meta).not.toBeNull();
         expect(meta!.source).toBe('registry:@kanyun/docz');
         expect(meta!.registry).toBe('https://rush.zhenguanyu.com');
+      } finally {
+        process.env.HOME = originalHome;
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('should write back the resolved latest version, not the literal "unknown", when current version was never known', async () => {
+      // SKILL.md has no `version:` header and there's no prior .reskill-source.json,
+      // so currentVersion starts out as 'unknown' going into the probe.
+      const globalSkillsDir = path.join(tempDir, '.agents', 'skills');
+      const skillDir = path.join(globalSkillsDir, 'gemini-video-analyzer');
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(skillDir, 'SKILL.md'),
+        '---\nname: gemini-video-analyzer\ndescription: test\n---\n',
+      );
+
+      const originalHome = process.env.HOME;
+      process.env.HOME = tempDir;
+
+      try {
+        const manager = new SkillManager(tempDir, { global: true });
+
+        const { RegistryClient } = await import('./registry-client.js');
+        vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+          name: '@kanyun/gemini-video-analyzer',
+          latest_version: '1.0.1',
+          dist_tags: [{ tag: 'latest', version: '1.0.1' }],
+        });
+
+        const results = await manager.checkOutdated();
+        const skill = results.find((r) => r.name === 'gemini-video-analyzer');
+        expect(skill).toBeDefined();
+        expect(skill!.latest).toBe('1.0.1');
+
+        // Regression: previously this wrote the literal string 'unknown' back into
+        // .reskill-source.json (the pre-probe currentVersion), permanently discarding
+        // the version we just resolved and leaving `list -g` stuck on 'unknown' forever.
+        const meta = readSourceMeta(skillDir);
+        expect(meta).not.toBeNull();
+        expect(meta!.version).toBe('1.0.1');
+
+        // And a subsequent list() call now reports the real version instead of 'unknown'.
+        const installed = manager.list().find((s) => s.name === 'gemini-video-analyzer');
+        expect(installed?.version).toBe('1.0.1');
       } finally {
         process.env.HOME = originalHome;
         vi.restoreAllMocks();
