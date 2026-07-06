@@ -217,6 +217,49 @@ export class SkillManager {
   }
 
   /**
+   * Write .reskill-source.json for an effectively-global install.
+   *
+   * Always writes to the canonical location. Additionally writes to the Claude
+   * Cowork 3P app-managed directory when it's one of the target agents — Claude 3P
+   * installs live entirely outside the canonical/agent-symlink tree (see
+   * installClaude3pSkill), so a canonical-only write never reaches it. Without this,
+   * `list()`'s claude-3p branch has no source metadata to read and silently falls
+   * back to whatever `version:` happens to be baked into the copied SKILL.md, which
+   * can drift from the version that was actually resolved and installed.
+   */
+  private writeEffectiveSourceMeta(
+    skillName: string,
+    targetAgents: AgentType[],
+    meta: Omit<SourceMeta, 'installedAt'>,
+  ): void {
+    const paths: string[] = [];
+
+    // Only write to canonical if it already holds real content (created by a
+    // symlink-mode agent install in this same call). writeSourceMeta() auto-creates
+    // missing directories, so writing here unconditionally for a claude-3p-only /
+    // copy-only install would create a "ghost" canonical directory containing
+    // nothing but this JSON file — which then pollutes list(): a content-less
+    // directory still counts as "installed" there, and can shadow the real
+    // per-agent entry via the seenNames dedup.
+    const canonicalPath = this.getSkillPath(skillName);
+    if (exists(canonicalPath)) {
+      paths.push(canonicalPath);
+    }
+
+    if (targetAgents.includes(CLAUDE_COWORK_3P_AGENT)) {
+      paths.push(getClaude3pSkillPath(skillName));
+    }
+
+    for (const skillPath of paths) {
+      try {
+        writeSourceMeta(skillPath, meta);
+      } catch {
+        // Non-critical
+      }
+    }
+  }
+
+  /**
    * Get project root directory
    */
   getProjectRoot(): string {
@@ -1000,8 +1043,15 @@ export class SkillManager {
     // Read metadata from SKILL.md (sole source per agentskills.io spec)
     const skillMd = this.getSkillMetadataFromDir(skillPath);
 
-    // Version priority: locked > SKILL.md > 'unknown'
-    const version = isLinked ? 'local' : locked?.version || skillMd?.version || 'unknown';
+    // .reskill-source.json is the global-install counterpart to skills.lock: written by
+    // writeSourceMeta() whenever a skill is installed effectively-globally (see install path),
+    // since global/no-manifest installs never get a skills.lock entry.
+    const sourceMeta = readSourceMeta(skillPath);
+
+    // Version priority: locked (project mode) > sourceMeta (global mode) > SKILL.md > 'unknown'.
+    // Applies regardless of symlink status; callers that care about symlink installs read
+    // `isLinked` separately, e.g. list.ts appends "(linked)".
+    const version = locked?.version || sourceMeta?.version || skillMd?.version || 'unknown';
 
     return {
       name,
@@ -1263,12 +1313,17 @@ export class SkillManager {
           semver.valid(latest) !== null &&
           semver.gt(latest, currentVersion);
 
-        // Write back source metadata for future lookups
+        // Write back source metadata for future lookups. If we never had a known
+        // current version, persisting the literal 'unknown' string would make every
+        // future lookup a no-op — use the newly-resolved latest as a best-effort
+        // baseline instead so subsequent list/outdated calls have a real version to
+        // compare against (this round's updateAvailable check above already ran
+        // against the true previous currentVersion, so it isn't affected).
         if (skillPath) {
           try {
             writeSourceMeta(skillPath, {
               source: `registry:${fullName}`,
-              version: currentVersion,
+              version: currentVersion === 'unknown' ? latest : currentVersion,
               registry: url,
             });
           } catch {
@@ -1544,15 +1599,10 @@ export class SkillManager {
       }
 
       if (effectivelyGlobal) {
-        const skillInstallPath = this.getSkillPath(skillInfo.name);
-        try {
-          writeSourceMeta(skillInstallPath, {
-            source: skillSource,
-            version: semanticVersion,
-          });
-        } catch {
-          // Non-critical
-        }
+        this.writeEffectiveSourceMeta(skillInfo.name, targetAgents, {
+          source: skillSource,
+          version: semanticVersion,
+        });
       }
 
       const successCount = Array.from(results.values()).filter((r) => r.success).length;
@@ -1649,16 +1699,11 @@ export class SkillManager {
 
     // Write source metadata for global installs
     if (effectivelyGlobal) {
-      const skillPath = this.getSkillPath(skillName);
-      try {
-        writeSourceMeta(skillPath, {
-          source: registryContext?.lockSource ?? gitSource,
-          version: semanticVersion,
-          registry: registryContext?.registryUrl,
-        });
-      } catch {
-        // Non-critical
-      }
+      this.writeEffectiveSourceMeta(skillName, targetAgents, {
+        source: registryContext?.lockSource ?? gitSource,
+        version: semanticVersion,
+        registry: registryContext?.registryUrl,
+      });
     }
 
     // Count results
@@ -1763,16 +1808,11 @@ export class SkillManager {
 
     // Write source metadata for global installs
     if (effectivelyGlobal) {
-      const skillInstallPath = this.getSkillPath(skillName);
-      try {
-        writeSourceMeta(skillInstallPath, {
-          source: registryContext?.lockSource ?? httpSource,
-          version: semanticVersion,
-          registry: registryContext?.registryUrl,
-        });
-      } catch {
-        // Non-critical
-      }
+      this.writeEffectiveSourceMeta(skillName, targetAgents, {
+        source: registryContext?.lockSource ?? httpSource,
+        version: semanticVersion,
+        registry: registryContext?.registryUrl,
+      });
     }
 
     // Count results
@@ -2012,16 +2052,11 @@ export class SkillManager {
 
       // Write source metadata for global installs
       if (effectivelyGlobal) {
-        const skillInstallPath = this.getSkillPath(shortName);
-        try {
-          writeSourceMeta(skillInstallPath, {
-            source: `registry:${resolvedParsed.fullName}`,
-            version,
-            registry: resolvedRegistryUrl,
-          });
-        } catch {
-          // Non-critical
-        }
+        this.writeEffectiveSourceMeta(shortName, targetAgents, {
+          source: `registry:${resolvedParsed.fullName}`,
+          version,
+          registry: resolvedRegistryUrl,
+        });
       }
 
       // 9. Count results and log
@@ -2277,16 +2312,11 @@ export class SkillManager {
 
       // Write source metadata for global installs
       if (effectivelyGlobal) {
-        const skillInstallPath = this.getSkillPath(skillName);
-        try {
-          writeSourceMeta(skillInstallPath, {
-            source: `registry:${parsed.fullName}`,
-            version: semanticVersion,
-            registry: registryUrl,
-          });
-        } catch {
-          // Non-critical
-        }
+        this.writeEffectiveSourceMeta(skillName, targetAgents, {
+          source: `registry:${parsed.fullName}`,
+          version: semanticVersion,
+          registry: registryUrl,
+        });
       }
 
       return {

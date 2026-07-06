@@ -2502,6 +2502,63 @@ describe('SkillManager per-agent installation check', () => {
       }
     }
   });
+
+  it('writes .reskill-source.json into the claude-3p directory on a fresh registry install (fixes Docz-reported cross-agent version mismatch)', async () => {
+    const { CLAUDE_3P_SKILLS_ROOT_ENV } = await import('./claude-3p-installer.js');
+    const skillName = 'gemini-video-analyzer';
+    const resolvedVersion = '1.0.1';
+    // The published tarball's own SKILL.md carries a stale version that was never
+    // kept in sync with the registry's semver — this is the actual root cause of
+    // the Docz report, and lets the test prove sourceMeta wins over it.
+    const staleSkillMdVersion = '0.9.0';
+
+    const claude3pRoot = path.join(tempDir, 'claude-3p-root');
+    fs.mkdirSync(path.join(claude3pRoot, 'skills'), { recursive: true });
+    fs.writeFileSync(path.join(claude3pRoot, 'manifest.json'), '{"skills":[]}\n');
+    const originalRoot = process.env[CLAUDE_3P_SKILLS_ROOT_ENV];
+    process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = claude3pRoot;
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempDir;
+
+    try {
+      // Mirrors real-world Docz usage: separate `-g` install calls, one per agent
+      // (not one call with a mixed agent list — that's a different code path).
+      // Each call targeting a single agent is what makes it "effectively global".
+      manager = new SkillManager(tempDir, { global: true });
+
+      const registryResolver = await mockRegistryFlow(skillName, resolvedVersion);
+      const mockSkillDir = path.join(tempDir, 'mock-extracted-skill');
+      fs.mkdirSync(mockSkillDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(mockSkillDir, 'SKILL.md'),
+        `---\nname: ${skillName}\nversion: ${staleSkillMdVersion}\n---\n# ${skillName}\n`,
+      );
+      vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
+
+      await manager.installToAgents(`@kanyun/${skillName}@${resolvedVersion}`, [
+        'claude-cowork-3p',
+      ]);
+
+      // Claude 3P's own directory (NOT canonical) must have source metadata recording
+      // the actually-resolved version, not the stale SKILL.md one.
+      const claude3pSkillPath = path.join(claude3pRoot, 'skills', skillName);
+      const claude3pMeta = readSourceMeta(claude3pSkillPath);
+      expect(claude3pMeta).not.toBeNull();
+      expect(claude3pMeta?.version).toBe(resolvedVersion);
+
+      // list() merges canonical + claude-3p entries under the same name, so match
+      // on path specifically to make sure we're checking the claude-3p entry.
+      const claude3pListed = manager.list().find((s) => s.path === claude3pSkillPath);
+      expect(claude3pListed?.version).toBe(resolvedVersion);
+    } finally {
+      process.env.HOME = originalHome;
+      if (originalRoot === undefined) {
+        delete process.env[CLAUDE_3P_SKILLS_ROOT_ENV];
+      } else {
+        process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = originalRoot;
+      }
+    }
+  });
 });
 
 // ============================================================================
@@ -2564,6 +2621,65 @@ description: A skill without version
       expect(skill).not.toBeNull();
       // SKILL.md has no version, returns 'unknown'
       expect(skill?.version).toBe('unknown');
+    });
+
+    it('should use version from SKILL.md for a symlinked (global) install, not the literal string "local"', () => {
+      // Simulate a global install: real skill lives elsewhere, canonical path is a symlink to it
+      // (this mirrors `reskill install -g` / the default symlink install mode)
+      const realSkillPath = path.join(tempDir, 'real-skills', 'linked-skill');
+      fs.mkdirSync(realSkillPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(realSkillPath, 'SKILL.md'),
+        `---
+name: linked-skill
+description: A symlinked skill
+version: 2.3.0
+---
+
+# Linked Skill
+`,
+      );
+
+      const canonicalDir = path.join(tempDir, '.agents', 'skills');
+      fs.mkdirSync(canonicalDir, { recursive: true });
+      fs.symlinkSync(realSkillPath, path.join(canonicalDir, 'linked-skill'), 'dir');
+
+      const skill = skillManager.getInstalledSkill('linked-skill');
+      expect(skill).not.toBeNull();
+      expect(skill?.isLinked).toBe(true);
+      // Regression: previously this returned the literal string 'local' for any symlinked
+      // install, discarding the real version from SKILL.md/lockfile.
+      expect(skill?.version).toBe('2.3.0');
+    });
+
+    it('should fall back to .reskill-source.json version when SKILL.md has no version (global registry install)', () => {
+      // Simulate a registry-installed skill whose published SKILL.md never had a `version:`
+      // frontmatter field, but writeSourceMeta() recorded the resolved registry version at
+      // install time (this is what `reskill install -g @scope/name` does for effectively-global
+      // installs, since they never get a skills.lock entry).
+      const skillPath = path.join(tempDir, '.agents', 'skills', 'registry-skill');
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(skillPath, 'SKILL.md'),
+        `---
+name: registry-skill
+description: A registry skill without a version header
+---
+
+# Registry Skill
+`,
+      );
+      writeSourceMeta(skillPath, {
+        source: 'registry:@scope/registry-skill',
+        version: '1.0.1',
+      });
+
+      const skill = skillManager.getInstalledSkill('registry-skill');
+      expect(skill).not.toBeNull();
+      // Regression: previously .reskill-source.json was never consulted by getInstalledSkill,
+      // so this fell all the way through to 'unknown' even though the real installed version
+      // was known and recorded on disk.
+      expect(skill?.version).toBe('1.0.1');
     });
   });
 
@@ -3714,6 +3830,118 @@ describe('reskill source metadata', () => {
         expect(meta!.registry).toBe('https://rush.zhenguanyu.com');
       } finally {
         process.env.HOME = originalHome;
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('should write back the resolved latest version, not the literal "unknown", when current version was never known', async () => {
+      // SKILL.md has no `version:` header and there's no prior .reskill-source.json,
+      // so currentVersion starts out as 'unknown' going into the probe.
+      const globalSkillsDir = path.join(tempDir, '.agents', 'skills');
+      const skillDir = path.join(globalSkillsDir, 'gemini-video-analyzer');
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(skillDir, 'SKILL.md'),
+        '---\nname: gemini-video-analyzer\ndescription: test\n---\n',
+      );
+
+      const originalHome = process.env.HOME;
+      process.env.HOME = tempDir;
+
+      try {
+        const manager = new SkillManager(tempDir, { global: true });
+
+        const { RegistryClient } = await import('./registry-client.js');
+        vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+          name: '@kanyun/gemini-video-analyzer',
+          latest_version: '1.0.1',
+          dist_tags: [{ tag: 'latest', version: '1.0.1' }],
+        });
+
+        const results = await manager.checkOutdated();
+        const skill = results.find((r) => r.name === 'gemini-video-analyzer');
+        expect(skill).toBeDefined();
+        expect(skill!.latest).toBe('1.0.1');
+
+        // Regression: previously this wrote the literal string 'unknown' back into
+        // .reskill-source.json (the pre-probe currentVersion), permanently discarding
+        // the version we just resolved and leaving `list -g` stuck on 'unknown' forever.
+        const meta = readSourceMeta(skillDir);
+        expect(meta).not.toBeNull();
+        expect(meta!.version).toBe('1.0.1');
+
+        // And a subsequent list() call now reports the real version instead of 'unknown'.
+        const installed = manager.list().find((s) => s.name === 'gemini-video-analyzer');
+        expect(installed?.version).toBe('1.0.1');
+      } finally {
+        process.env.HOME = originalHome;
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('does NOT correct an already-installed claude-cowork-3p skill whose SKILL.md carries a stale (but present) version', async () => {
+      // Reproduces the Docz-reported cross-agent mismatch: a skill installed to
+      // claude-cowork-3p before install-time wrote per-agent source metadata there.
+      // Its SKILL.md still has whatever version the author baked into the published
+      // tarball (1.0.0), which has since drifted from the registry's actual latest
+      // (1.0.1). Unlike the 'unknown' case above, `outdated -g`'s write-back only
+      // replaces the literal string 'unknown' — a present-but-wrong version passes
+      // through untouched, so this does NOT self-heal by running `outdated -g`.
+      const { CLAUDE_3P_SKILLS_ROOT_ENV } = await import('./claude-3p-installer.js');
+      const claude3pRoot = path.join(tempDir, 'claude-3p-root');
+      fs.mkdirSync(path.join(claude3pRoot, 'skills'), { recursive: true });
+      fs.writeFileSync(path.join(claude3pRoot, 'manifest.json'), '{"skills":[]}\n');
+      const originalClaude3pRoot = process.env[CLAUDE_3P_SKILLS_ROOT_ENV];
+      process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = claude3pRoot;
+
+      const skillDir = path.join(claude3pRoot, 'skills', 'gemini-video-analyzer');
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(skillDir, 'SKILL.md'),
+        '---\nname: gemini-video-analyzer\nversion: 1.0.0\ndescription: test\n---\n',
+      );
+
+      const originalHome = process.env.HOME;
+      process.env.HOME = tempDir;
+
+      try {
+        const manager = new SkillManager(tempDir, { global: true });
+
+        const { RegistryClient } = await import('./registry-client.js');
+        vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+          name: '@kanyun/gemini-video-analyzer',
+          latest_version: '1.0.1',
+          dist_tags: [{ tag: 'latest', version: '1.0.1' }],
+        });
+
+        const before = manager.list().find((s) => s.name === 'gemini-video-analyzer');
+        expect(before?.version).toBe('1.0.0');
+
+        const results = await manager.checkOutdated();
+        const skill = results.find((r) => r.name === 'gemini-video-analyzer');
+        expect(skill).toBeDefined();
+        // The probe correctly detects an update is available (1.0.0 -> 1.0.1)...
+        expect(skill?.latest).toBe('1.0.1');
+        expect(skill?.updateAvailable).toBe(true);
+
+        // ...but the write-back persists the stale currentVersion as-is, since it
+        // wasn't the literal 'unknown' sentinel this fix targets.
+        const meta = readSourceMeta(skillDir);
+        expect(meta).not.toBeNull();
+        expect(meta?.version).toBe('1.0.0');
+
+        // So list() is still stuck on the stale version after running `outdated -g` —
+        // confirming a reinstall (not `outdated -g`) is the only fix for already-broken
+        // claude-cowork-3p installs until this is separately addressed.
+        const after = manager.list().find((s) => s.name === 'gemini-video-analyzer');
+        expect(after?.version).toBe('1.0.0');
+      } finally {
+        process.env.HOME = originalHome;
+        if (originalClaude3pRoot === undefined) {
+          delete process.env[CLAUDE_3P_SKILLS_ROOT_ENV];
+        } else {
+          process.env[CLAUDE_3P_SKILLS_ROOT_ENV] = originalClaude3pRoot;
+        }
         vi.restoreAllMocks();
       }
     });
