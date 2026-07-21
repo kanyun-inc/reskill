@@ -78,6 +78,7 @@ npx reskill@latest <command>  # 或直接使用 npx
 | `-s, --skill <names...>`  | `install`                                                     | 从多 skill 仓库中选择指定 skill              |
 | `--list`                  | `install`                                                     | 列出仓库中可用的 skills（不安装）            |
 | `--skip-manifest`         | `install`                                                     | 跳过 `skills.json` 和 `skills.lock` 写入（用于平台集成） |
+| `--base-dir <dir>`        | `install`, `uninstall`, `list`, `outdated`, `update`          | 指定项目根目录，`skills.json`、`skills.lock` 与各 Agent 的 skills 目录都基于它解析 |
 | `-t, --token <token>`     | `install`, `find`, `group`, `publish`, `login`                | 认证令牌（用于 CI/CD 访问私有 skill）        |
 | `-r, --registry <url>`    | `install`, `find`, `group`, `publish`, `login`, `logout`, `whoami` | 覆盖 registry URL（用于 registry 相关命令）  |
 | `--tag <tag>`             | `publish`                                                     | 发布的 Git tag                               |
@@ -248,6 +249,54 @@ Skills 默认安装到 `.skills/`，可与任何 Agent 集成：
 | Roo Code       | `.roo/skills`      |
 | Trae           | `.trae/skills`     |
 | Windsurf       | `.windsurf/skills` |
+
+### 隔离的项目根目录
+
+默认情况下，项目级命令都基于当前目录解析路径。`--base-dir` 可以把它们指向另一个项目根目录——`skills.json`、`skills.lock` 和各 Agent 目录会一起迁移：
+
+```bash
+# 安装到 ./agents/foo/.claude/skills 和 ./agents/foo/.cursor/skills，
+# 并读写 ./agents/foo/skills.json
+reskill install github:user/skill --base-dir agents/foo -a claude-code cursor
+```
+
+当同一台机器上并存多个 agent 定义、每个都需要自己的 skill 集合时，这个参数很有用：
+
+```
+agents/
+├── foo/
+│   ├── skills.json          # foo 的依赖
+│   ├── .claude/skills/      # foo 的 skills
+│   └── .cursor/skills/
+└── bar/
+    ├── skills.json          # bar 的依赖，与 foo 互相独立
+    └── .claude/skills/
+```
+
+对每个根目录分别安装——一个根目录一次 `reskill` 调用：
+
+```bash
+reskill install github:user/skill-a --base-dir agents/foo -a claude-code -y
+reskill install github:user/skill-b --base-dir agents/bar -a claude-code -y
+```
+
+> **请串行执行。** 全局缓存并非并发安全：两个 `reskill` 进程同时安装同一个 skill 版本可能互相干扰。
+
+读取和维护各个根目录同样使用这个参数：
+
+```bash
+reskill list --base-dir agents/foo
+reskill outdated --base-dir agents/foo
+reskill update --base-dir agents/foo
+reskill uninstall skill-a --base-dir agents/foo
+```
+
+若要让 runtime 识别这些 skills，把它自己的配置根目录指向对应位置——以 Claude Code 为例即 `CLAUDE_CONFIG_DIR=agents/foo/.claude`。
+
+注意事项：
+
+- 目录必须已存在，reskill 不会自动创建。
+- `--base-dir` 不能与 `-g/--global` 同时使用，全局安装始终解析到用户主目录。
 
 ## 发布 Skills
 

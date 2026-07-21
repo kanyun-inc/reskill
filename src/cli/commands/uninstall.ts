@@ -5,6 +5,7 @@ import { type AgentType, agents } from '../../core/agent-registry.js';
 import { ConfigLoader } from '../../core/config-loader.js';
 import { Installer } from '../../core/installer.js';
 import { SkillManager } from '../../core/skill-manager.js';
+import { BASE_DIR_OPTION_DESCRIPTION, resolveBaseDirOrExit } from '../../utils/base-dir.js';
 
 /**
  * uninstall command - Uninstall one or more skills
@@ -17,20 +18,23 @@ export const uninstallCommand = new Command('uninstall')
   .argument('<skills...>', 'Skill names to uninstall')
   .option('-g, --global', 'Uninstall from global installation (~/.claude/skills)')
   .option('-y, --yes', 'Skip confirmation prompts')
+  .option('--base-dir <dir>', BASE_DIR_OPTION_DESCRIPTION)
   .action(async (skillNames: string[], options) => {
     const isGlobal = options.global || false;
     const skipConfirm = options.yes || false;
-    const skillManager = new SkillManager(undefined, { global: isGlobal });
+    const baseDir = resolveBaseDirOrExit(options.baseDir, { global: isGlobal });
+    const projectRoot = baseDir ?? process.cwd();
+    const skillManager = new SkillManager(baseDir, { global: isGlobal });
 
     console.log();
     p.intro(chalk.bgCyan.black(' reskill '));
 
     // Check which agents have these skills installed
     // Use installDir from config to match where skills are actually installed
-    const config = new ConfigLoader(process.cwd());
+    const config = new ConfigLoader(projectRoot);
     const defaults = config.getDefaults();
     const installer = new Installer({
-      cwd: process.cwd(),
+      cwd: projectRoot,
       global: isGlobal,
       installDir: defaults.installDir,
     });

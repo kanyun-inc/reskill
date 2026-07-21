@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import ora from 'ora';
 import { ConfigLoader } from '../../core/config-loader.js';
 import { SkillManager } from '../../core/skill-manager.js';
+import { BASE_DIR_OPTION_DESCRIPTION, resolveBaseDirOrExit } from '../../utils/base-dir.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -12,11 +13,13 @@ export const updateCommand = new Command('update')
   .description('Update installed skills')
   .argument('[skill]', 'Skill name to update (updates all if not specified)')
   .option('-g, --global', 'Update globally installed skills')
+  .option('--base-dir <dir>', BASE_DIR_OPTION_DESCRIPTION)
   .action(async (skill, options) => {
     const isGlobal = options.global || false;
+    const baseDir = resolveBaseDirOrExit(options.baseDir, { global: isGlobal });
 
     if (!isGlobal) {
-      const configLoader = new ConfigLoader();
+      const configLoader = new ConfigLoader(baseDir);
 
       if (!configLoader.exists()) {
         logger.error("skills.json not found. Run 'reskill init' first.");
@@ -24,7 +27,7 @@ export const updateCommand = new Command('update')
       }
     }
 
-    const skillManager = new SkillManager(undefined, { global: isGlobal });
+    const skillManager = new SkillManager(baseDir, { global: isGlobal });
     const spinner = ora(skill ? `Updating ${skill}...` : 'Updating all skills...').start();
 
     try {

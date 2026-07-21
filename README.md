@@ -78,6 +78,7 @@ npx reskill@latest <command>  # Or use npx directly
 | `-s, --skill <names...>`  | `install`                                                     | Select specific skill(s) by name from a multi-skill repo      |
 | `--list`                  | `install`                                                     | List available skills in the repository without installing     |
 | `--skip-manifest`         | `install`                                                     | Skip all `skills.json` and `skills.lock` writes (for platform integration) |
+| `--base-dir <dir>`        | `install`, `uninstall`, `list`, `outdated`, `update`          | Project root to resolve `skills.json`, `skills.lock` and agent skill directories against |
 | `-t, --token <token>`     | `install`, `find`, `group`, `publish`, `login`                | Auth token for registry API requests (for CI/CD)               |
 | `-r, --registry <url>`    | `install`, `find`, `group`, `publish`, `login`, `logout`, `whoami` | Registry URL override for registry-enabled commands       |
 | `--tag <tag>`             | `publish`                                                     | Git tag to publish                                             |
@@ -248,6 +249,61 @@ Skills are installed to `.skills/` by default and can be integrated with any age
 | Roo Code       | `.roo/skills`      |
 | Trae           | `.trae/skills`     |
 | Windsurf       | `.windsurf/skills` |
+
+### Isolated Project Roots
+
+By default, project-level commands resolve everything against the current
+directory. `--base-dir` points them at a different project root instead —
+`skills.json`, `skills.lock` and every agent directory move together:
+
+```bash
+# Installs into ./agents/foo/.claude/skills and ./agents/foo/.cursor/skills,
+# reading and writing ./agents/foo/skills.json
+reskill install github:user/skill --base-dir agents/foo -a claude-code cursor
+```
+
+This is useful when several agent definitions live side by side on one machine
+and each needs its own skill set:
+
+```
+agents/
+├── foo/
+│   ├── skills.json          # foo's dependencies
+│   ├── .claude/skills/      # foo's skills
+│   └── .cursor/skills/
+└── bar/
+    ├── skills.json          # bar's dependencies, independent of foo
+    └── .claude/skills/
+```
+
+Install into each root separately — one `reskill` call per root:
+
+```bash
+reskill install github:user/skill-a --base-dir agents/foo -a claude-code -y
+reskill install github:user/skill-b --base-dir agents/bar -a claude-code -y
+```
+
+> **Run these sequentially.** The global cache is not concurrency-safe: two
+> `reskill` processes installing the same skill version at the same time can
+> interfere with each other.
+
+The same flag works for reading back and maintaining each root:
+
+```bash
+reskill list --base-dir agents/foo
+reskill outdated --base-dir agents/foo
+reskill update --base-dir agents/foo
+reskill uninstall skill-a --base-dir agents/foo
+```
+
+To let a runtime pick these skills up, point its own config root at the matching
+directory — for Claude Code, `CLAUDE_CONFIG_DIR=agents/foo/.claude`.
+
+Notes:
+
+- The directory must already exist; reskill will not create it.
+- `--base-dir` cannot be combined with `-g/--global`, which always resolves to
+  the user home directory.
 
 ## Publishing Skills
 
