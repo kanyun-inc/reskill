@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import ora from 'ora';
 import { ConfigLoader } from '../../core/config-loader.js';
 import { SkillManager } from '../../core/skill-manager.js';
+import { BASE_DIR_OPTION_DESCRIPTION, resolveBaseDirOrExit } from '../../utils/base-dir.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -12,11 +13,13 @@ export const outdatedCommand = new Command('outdated')
   .description('Check for outdated skills')
   .option('-j, --json', 'Output as JSON')
   .option('-g, --global', 'Check globally installed skills')
+  .option('--base-dir <dir>', BASE_DIR_OPTION_DESCRIPTION)
   .action(async (options) => {
     const isGlobal = options.global || false;
+    const baseDir = resolveBaseDirOrExit(options.baseDir, { global: isGlobal });
 
     if (!isGlobal) {
-      const configLoader = new ConfigLoader();
+      const configLoader = new ConfigLoader(baseDir);
 
       if (!configLoader.exists()) {
         logger.error("skills.json not found. Run 'reskill init' first.");
@@ -30,7 +33,7 @@ export const outdatedCommand = new Command('outdated')
       }
     }
 
-    const skillManager = new SkillManager(undefined, { global: isGlobal });
+    const skillManager = new SkillManager(baseDir, { global: isGlobal });
     const spinner = ora('Checking for updates...').start();
 
     try {

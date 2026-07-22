@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { type AgentType, getAgentConfig, isValidAgentType } from '../../core/agent-registry.js';
 import { CLAUDE_COWORK_3P_AGENT } from '../../core/claude-3p-installer.js';
 import { SkillManager } from '../../core/skill-manager.js';
+import { BASE_DIR_OPTION_DESCRIPTION, resolveBaseDirOrExit } from '../../utils/base-dir.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -13,6 +14,7 @@ export const listCommand = new Command('list')
   .option('-j, --json', 'Output as JSON')
   .option('-g, --global', 'List globally installed skills')
   .option('-a, --agent <agent>', 'List skills installed to a specific agent')
+  .option('--base-dir <dir>', BASE_DIR_OPTION_DESCRIPTION)
   .action((options) => {
     const agentInput: string | undefined = options.agent;
 
@@ -25,7 +27,8 @@ export const listCommand = new Command('list')
 
     // claude-cowork-3p is always global
     const isGlobal = options.global || agent === CLAUDE_COWORK_3P_AGENT;
-    const skillManager = new SkillManager(undefined, { global: isGlobal });
+    const baseDir = resolveBaseDirOrExit(options.baseDir, { global: isGlobal });
+    const skillManager = new SkillManager(baseDir, { global: isGlobal });
     const skills = skillManager.list(agent ? { agent } : undefined);
 
     if (skills.length === 0) {
@@ -43,11 +46,7 @@ export const listCommand = new Command('list')
       return;
     }
 
-    const scopeLabel = agent
-      ? getAgentConfig(agent).displayName
-      : isGlobal
-        ? 'global'
-        : 'project';
+    const scopeLabel = agent ? getAgentConfig(agent).displayName : isGlobal ? 'global' : 'project';
     logger.log(`Installed Skills (${scopeLabel}):`);
     logger.newline();
 

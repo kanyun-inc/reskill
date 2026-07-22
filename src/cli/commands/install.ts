@@ -7,6 +7,7 @@ import { CLAUDE_COWORK_3P_AGENT } from '../../core/claude-3p-installer.js';
 import { ConfigLoader } from '../../core/config-loader.js';
 import type { InstallMode } from '../../core/installer.js';
 import { SkillManager } from '../../core/skill-manager.js';
+import { BASE_DIR_OPTION_DESCRIPTION, resolveBaseDir } from '../../utils/base-dir.js';
 import { shortenPath } from '../../utils/fs.js';
 
 // ============================================================================
@@ -31,6 +32,8 @@ interface InstallOptions {
   token?: string;
   /** Skip all skills.json and skills.lock writes (for platform integration) */
   skipManifest?: boolean;
+  /** Project root to resolve manifest, lock and agent skill directories against */
+  baseDir?: string;
 }
 
 interface InstallContext {
@@ -46,6 +49,8 @@ interface InstallContext {
   isBatchInstall: boolean;
   skipConfirm: boolean;
   skipManifest: boolean;
+  /** Resolved absolute project root, or undefined to use process.cwd() */
+  baseDir: string | undefined;
 }
 
 // ============================================================================
@@ -91,7 +96,10 @@ function filterValidAgents(
  * Create install context from command arguments and options
  */
 function createInstallContext(skills: string[], options: InstallOptions): InstallContext {
-  const configLoader = new ConfigLoader();
+  // Resolve --base-dir first: it decides where skills.json is read from, so it
+  // must be settled before the config loader looks for one.
+  const baseDir = resolveBaseDir(options.baseDir, { global: options.global });
+  const configLoader = new ConfigLoader(baseDir);
   const allAgentTypes = Object.keys(agents) as AgentType[];
   const hasSkillsJson = configLoader.exists();
 
@@ -113,6 +121,7 @@ function createInstallContext(skills: string[], options: InstallOptions): Instal
     isBatchInstall: skills.length > 1,
     skipConfirm: options.yes ?? false,
     skipManifest: options.skipManifest ?? false,
+    baseDir,
   };
 }
 
@@ -271,10 +280,7 @@ async function resolveInstallScope(
   }
 
   // claude-cowork-3p always installs globally — skip prompt
-  if (
-    targetAgents.length > 0 &&
-    targetAgents.every((a) => a === CLAUDE_COWORK_3P_AGENT)
-  ) {
+  if (targetAgents.length > 0 && targetAgents.every((a) => a === CLAUDE_COWORK_3P_AGENT)) {
     p.log.info('Using global scope (claude-cowork-3p is always global)');
     return true;
   }
@@ -328,10 +334,7 @@ async function resolveInstallMode(
   }
 
   // claude-cowork-3p always uses copy mode — skip prompt
-  if (
-    targetAgents.length > 0 &&
-    targetAgents.every((a) => a === CLAUDE_COWORK_3P_AGENT)
-  ) {
+  if (targetAgents.length > 0 && targetAgents.every((a) => a === CLAUDE_COWORK_3P_AGENT)) {
     return 'copy';
   }
 
@@ -403,14 +406,14 @@ async function installAllSkills(
   displayInstallSummary({
     skillCount: Object.keys(skills).length,
     agentCount: targetAgents.length,
-    scope: 'Project (./) ',
+    scope: ctx.baseDir ? `Project (${shortenPath(ctx.baseDir)})` : 'Project (./) ',
     mode: installMode,
   });
 
   // Execute installation (no confirmation for reinstall all)
   spinner.start('Installing skills...');
 
-  const skillManager = new SkillManager(undefined, {
+  const skillManager = new SkillManager(ctx.baseDir, {
     global: false,
     noManifest: ctx.skipManifest,
   });
@@ -466,7 +469,7 @@ async function installSingleSkill(
   const skill = skills[0];
   const cwd = process.cwd();
 
-  const skillManager = new SkillManager(undefined, {
+  const skillManager = new SkillManager(ctx.baseDir, {
     global: installGlobally,
     noManifest: ctx.skipManifest,
   });
@@ -631,7 +634,7 @@ async function installMultiSkillFromRepo(
   installMode: InstallMode,
   spinner: ReturnType<typeof p.spinner>,
 ): Promise<void> {
-  const skillManager = new SkillManager(undefined, {
+  const skillManager = new SkillManager(ctx.baseDir, {
     global: installGlobally,
     noManifest: ctx.skipManifest,
   });
@@ -742,7 +745,7 @@ async function installMultipleSkills(
   }
 
   // Execute installation for all skills in parallel
-  const skillManager = new SkillManager(undefined, {
+  const skillManager = new SkillManager(ctx.baseDir, {
     global: installGlobally,
     noManifest: ctx.skipManifest,
   });
@@ -998,6 +1001,7 @@ export const installCommand = new Command('install')
     '--skip-manifest',
     'Skip all skills.json and skills.lock writes (for platform integration)',
   )
+  .option('--base-dir <dir>', BASE_DIR_OPTION_DESCRIPTION)
   .action(async (skills: string[], options: InstallOptions) => {
     // Handle --all flag implications
     if (options.all) {
@@ -1019,14 +1023,15 @@ export const installCommand = new Command('install')
       options.skipManifest = true;
     }
 
-    // Create execution context
-    const ctx = createInstallContext(skills, options);
-
     // Print banner
     console.log();
     p.intro(chalk.bgCyan.black(' reskill '));
 
     try {
+      // Built inside the try so --base-dir validation failures surface through
+      // the same error path as the rest of the install.
+      const ctx = createInstallContext(skills, options);
+
       const spinner = p.spinner();
 
       // Multi-skill path (single ref + --skill or --list): list only skips scope/mode/agents
