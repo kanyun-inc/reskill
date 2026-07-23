@@ -114,7 +114,8 @@ export const agents: Record<AgentType, AgentConfig> = {
   codex: {
     name: 'codex',
     displayName: 'Codex',
-    skillsDir: '.codex/skills',
+    // Latest Codex discovers project-level skills from .agents/skills
+    skillsDir: '.agents/skills',
     globalSkillsDir: join(home, '.codex/skills'),
     detectInstalled: async () => {
       return existsSync(join(home, '.codex'));

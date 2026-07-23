@@ -236,7 +236,7 @@ Skills are installed to `.skills/` by default and can be integrated with any age
 | Claude Code    | `.claude/skills`   |
 | Claude Cowork 3P (Beta) | App-managed `Claude-3p/local-agent-mode-sessions/skills-plugin/<org>/<account>/skills` |
 | Clawdbot       | `skills`           |
-| Codex          | `.codex/skills`    |
+| Codex          | `.agents/skills`   |
 | Cursor         | `.cursor/skills`   |
 | Droid          | `.factory/skills`  |
 | Gemini CLI     | `.gemini/skills`   |
