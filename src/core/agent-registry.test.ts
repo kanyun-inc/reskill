@@ -112,6 +112,16 @@ describe('agent-registry', () => {
       expect(agents['github-copilot'].globalSkillsDir).toBe(path.join(home, '.copilot/skills'));
     });
 
+    it('codex agent should have correct configuration', () => {
+      const home = os.homedir();
+      expect(agents.codex.name).toBe('codex');
+      expect(agents.codex.displayName).toBe('Codex');
+      // Latest Codex discovers project-level skills from .agents/skills
+      expect(agents.codex.skillsDir).toBe('.agents/skills');
+      // Global path stays under ~/.codex/skills
+      expect(agents.codex.globalSkillsDir).toBe(path.join(home, '.codex/skills'));
+    });
+
     it('windsurf agent should have correct configuration', () => {
       const home = os.homedir();
       expect(agents.windsurf.name).toBe('windsurf');
@@ -199,6 +209,8 @@ describe('agent-registry', () => {
       expect(getAgentSkillsDir('windsurf', { global: true })).toBe(
         path.join(home, '.codeium/windsurf/skills'),
       );
+      expect(getAgentSkillsDir('codex')).toBe(path.join(process.cwd(), '.agents/skills'));
+      expect(getAgentSkillsDir('codex', { global: true })).toBe(path.join(home, '.codex/skills'));
     });
 
     it('should return Claude Cowork 3P app-managed skills directory', () => {
