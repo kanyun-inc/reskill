@@ -283,6 +283,12 @@ describe('RegistryResolver', () => {
       expect(fs.existsSync(path.join(tempDir, 'SKILL.md'))).toBe(true);
     });
 
+    it('accepts uppercase SKILL.MD (case-insensitive, aligned with getTarballTopDir)', async () => {
+      const tarball = await buildTarball([{ name: 'pptx/SKILL.MD', content: '# upper' }]);
+
+      await expect(resolver.extract(tarball, tempDir)).resolves.toBe(`${tempDir}/pptx`);
+    });
+
     it('rejects a junk-only tarball instead of installing an empty skill (#3062)', async () => {
       const tarball = await buildTarball([
         { name: '._pptx', content: 'appledouble junk' },
@@ -294,9 +300,7 @@ describe('RegistryResolver', () => {
     });
 
     it('rejects a tarball that has real files but no SKILL.md anywhere', async () => {
-      const tarball = await buildTarball([
-        { name: 'pptx/README.md', content: 'readme only' },
-      ]);
+      const tarball = await buildTarball([{ name: 'pptx/README.md', content: 'readme only' }]);
 
       await expect(resolver.extract(tarball, tempDir)).rejects.toThrow(/no SKILL\.md/);
     });

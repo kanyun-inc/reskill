@@ -12,6 +12,17 @@ import { extract, type Headers } from 'tar-stream';
 import { logger } from '../utils/logger.js';
 
 /**
+ * Check if a single path segment is a macOS/Windows metadata artifact
+ *
+ * Segment-level predicate shared by tarball entry filtering
+ * (`isMacMetadataPath`) and directory scanning (`SkillValidator.shouldIgnore`)
+ * so "what counts as metadata" has exactly one definition (#3062 review).
+ */
+export function isMacMetadataSegment(segment: string): boolean {
+  return segment === '__MACOSX' || segment === '.DS_Store' || segment.startsWith('._');
+}
+
+/**
  * Check if a tarball entry is a macOS/Windows metadata artifact that should be ignored
  *
  * Covers:
@@ -37,12 +48,7 @@ export function isMacMetadataPath(entryName: string): boolean {
   }
 
   const parts = entryName.split(/[\\/]/);
-  for (const part of parts) {
-    if (part === '__MACOSX' || part === '.DS_Store' || part.startsWith('._')) {
-      return true;
-    }
-  }
-  return false;
+  return parts.some(isMacMetadataSegment);
 }
 
 /**

@@ -256,7 +256,6 @@ This is the skill content.`);
   // ============================================================================
 
   describe('validate', () => {
-
     describe('SKILL.md validation (required)', () => {
       it('should pass with valid SKILL.md only', () => {
         createValidSkillMd();
@@ -471,6 +470,30 @@ license: MIT
   // ============================================================================
 
   describe('loadSkill', () => {
+    it('excludes macOS metadata files from the scanned files list (#3062)', () => {
+      createValidSkillMd();
+      fs.writeFileSync(path.join(tempDir, '_private.md'), 'normal underscore file');
+      fs.writeFileSync(path.join(tempDir, '._SKILL.md'), 'appledouble junk');
+      fs.writeFileSync(path.join(tempDir, '.DS_Store'), 'finder junk');
+      fs.mkdirSync(path.join(tempDir, '__MACOSX'), { recursive: true });
+      // 文件名刻意不带 ._ 前缀：单独守住 name === '__MACOSX' 那半个判据，
+      // 否则 ._-prefixed 夹具会让它被 startsWith('._') 误代过
+      fs.writeFileSync(path.join(tempDir, '__MACOSX', 'plainname'), 'zip metadata junk');
+      fs.mkdirSync(path.join(tempDir, 'sub'), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, 'sub', '._nested.txt'), 'nested appledouble');
+
+      const loaded = validator.loadSkill(tempDir);
+
+      expect(loaded.files).toContain('SKILL.md');
+      expect(loaded.files).toContain('_private.md');
+      expect(loaded.files).not.toContain('._SKILL.md');
+      expect(loaded.files).not.toContain('.DS_Store');
+      expect(loaded.files.some((f) => f.startsWith('__MACOSX'))).toBe(false);
+      expect(loaded.files.some((f) => f.split('/').some((seg) => seg.startsWith('._')))).toBe(
+        false,
+      );
+    });
+
     it('should synthesize skillJson from SKILL.md content', () => {
       createSkillMd(`---
 name: my-skill
@@ -676,33 +699,6 @@ version: "1.0.0"
       // Names with @ prefix should be rejected (scope is added separately)
       const result = validator.validateName('@kanyun/planning-with-files');
       expect(result.valid).toBe(false);
-    });
-  });
-
-  // ============================================================================
-  // ============================================================================
-  // loadSkill tests
-  // ============================================================================
-
-  describe('loadSkill', () => {
-    it('excludes macOS metadata files from the scanned files list (#3062)', () => {
-      createValidSkillMd();
-      fs.writeFileSync(path.join(tempDir, '_private.md'), 'normal underscore file');
-      fs.writeFileSync(path.join(tempDir, '._SKILL.md'), 'appledouble junk');
-      fs.writeFileSync(path.join(tempDir, '.DS_Store'), 'finder junk');
-      fs.mkdirSync(path.join(tempDir, '__MACOSX'), { recursive: true });
-      fs.writeFileSync(path.join(tempDir, '__MACOSX', '._test'), 'zip metadata junk');
-      fs.mkdirSync(path.join(tempDir, 'sub'), { recursive: true });
-      fs.writeFileSync(path.join(tempDir, 'sub', '._nested.txt'), 'nested appledouble');
-
-      const loaded = validator.loadSkill(tempDir);
-
-      expect(loaded.files).toContain('SKILL.md');
-      expect(loaded.files).toContain('_private.md');
-      expect(loaded.files).not.toContain('._SKILL.md');
-      expect(loaded.files).not.toContain('.DS_Store');
-      expect(loaded.files.some((f) => f.startsWith('__MACOSX'))).toBe(false);
-      expect(loaded.files.some((f) => f.split('/').some((seg) => seg.startsWith('._')))).toBe(false);
     });
   });
 
