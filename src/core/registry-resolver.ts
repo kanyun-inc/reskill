@@ -8,6 +8,7 @@
  * Uses RegistryClient to download and verify skills.
  */
 
+import { readdirSync } from 'node:fs';
 import { logger } from '../utils/logger.js';
 import {
   getRegistryUrl,
@@ -17,6 +18,18 @@ import {
 } from '../utils/registry-scope.js';
 import { extractTarballBuffer, getTarballTopDir } from './extractor.js';
 import { RegistryClient } from './registry-client.js';
+
+/**
+ * Check that a directory contains a SKILL.md (case-insensitive, matching
+ * getTarballTopDir's detection) — the minimal content contract of a skill.
+ */
+function containsSkillMd(dir: string): boolean {
+  try {
+    return readdirSync(dir).some((name) => name.toLowerCase() === 'skill.md');
+  } catch {
+    return false;
+  }
+}
 
 // ============================================================================
 // Types
@@ -161,16 +174,26 @@ export class RegistryResolver {
    * @param tarball - Tarball buffer
    * @param destDir - Destination directory
    * @returns Path to the extracted skill directory
+   * @throws Error if the extracted content contains no SKILL.md (e.g. a
+   *   tarball made entirely of macOS metadata entries) — installing it would
+   *   silently produce an empty skill and a bogus lock entry (#3062)
    */
   async extract(tarball: Buffer, destDir: string): Promise<string> {
     await extractTarballBuffer(tarball, destDir);
 
     // Get top-level directory name (i.e. skill name)
     const topDir = await getTarballTopDir(tarball);
-    if (topDir) {
-      return `${destDir}/${topDir}`;
+    const skillDir = topDir ? `${destDir}/${topDir}` : destDir;
+
+    // Distinguish "flat layout with root SKILL.md" (valid, skillDir IS the
+    // install dir) from "no usable content at all" (junk-only tarball). Both
+    // yield topDir === null, so verify content instead of trusting it.
+    if (!containsSkillMd(skillDir)) {
+      throw new Error(
+        `Extracted tarball contains no SKILL.md — not a valid skill package: ${skillDir}`,
+      );
     }
 
-    return destDir;
+    return skillDir;
   }
 }

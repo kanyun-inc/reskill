@@ -11,6 +11,7 @@ import * as zlib from 'node:zlib';
 import { pack } from 'tar-stream';
 import type { GroupDetail, GroupMember, GroupRole, SkillGroup, SkillInfo } from '../types/index.js';
 import { getShortName } from '../utils/registry-scope.js';
+import { isMacMetadataPath } from './extractor.js';
 import type { PublishPayload } from './publisher.js';
 
 // ============================================================================
@@ -339,6 +340,13 @@ export class RegistryClient {
 
       // Add files to tarball
       for (const file of files) {
+        // Skip macOS/Windows metadata files so published tarballs stay clean
+        // even when the skill directory sits on an exFAT/SMB volume or was
+        // extracted from a macOS-made zip (#3062)
+        if (isMacMetadataPath(file)) {
+          continue;
+        }
+
         const filePath = path.join(skillPath, file);
         if (fs.existsSync(filePath)) {
           const content = fs.readFileSync(filePath);

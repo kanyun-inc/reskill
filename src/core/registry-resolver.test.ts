@@ -4,7 +4,12 @@
  * Tests for detecting and resolving registry skill references
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import * as zlib from 'node:zlib';
+import { pack } from 'tar-stream';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RegistryClient } from './registry-client.js';
 import { RegistryResolver } from './registry-resolver.js';
 
@@ -216,6 +221,88 @@ describe('RegistryResolver', () => {
       expect(result.version).toBe('1.0.0');
       expect(result.integrity).toBe('');
       expect(result.tarball).toBe(TARBALL_CONTENT);
+    });
+  });
+
+  // ====================================================================
+  // extract() — SKILL.md content contract (#3062 review SF-1)
+  // ====================================================================
+
+  describe('extract', () => {
+    let tempDir: string;
+    let resolver: RegistryResolver;
+
+    // Helper: build gzipped tarball with sequential entries (files only)
+    function buildTarball(entries: Array<{ name: string; content: string }>): Promise<Buffer> {
+      return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        const tarPack = pack();
+        const gzip = zlib.createGzip();
+        gzip.on('data', (c: Buffer) => chunks.push(c));
+        gzip.on('end', () => resolve(Buffer.concat(chunks)));
+        gzip.on('error', reject);
+        tarPack.pipe(gzip);
+        for (const e of entries) {
+          const buf = Buffer.from(e.content);
+          tarPack.entry({ name: e.name, size: buf.length, mode: 0o644 }, buf);
+        }
+        tarPack.finalize();
+      });
+    }
+
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reskill-extract-test-'));
+      resolver = new RegistryResolver();
+    });
+
+    afterEach(() => {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('returns destDir/topDir for a normal nested tarball', async () => {
+      const tarball = await buildTarball([
+        { name: 'pptx/SKILL.md', content: '# pptx' },
+        { name: 'pptx/scripts/a.py', content: 'x' },
+      ]);
+
+      const skillDir = await resolver.extract(tarball, tempDir);
+
+      expect(skillDir).toBe(`${tempDir}/pptx`);
+      expect(fs.existsSync(path.join(skillDir, 'SKILL.md'))).toBe(true);
+    });
+
+    it('returns destDir itself for a flat tarball with root SKILL.md', async () => {
+      const tarball = await buildTarball([
+        { name: 'SKILL.md', content: '# flat' },
+        { name: 'examples.md', content: '# examples' },
+      ]);
+
+      const skillDir = await resolver.extract(tarball, tempDir);
+
+      expect(skillDir).toBe(tempDir);
+      expect(fs.existsSync(path.join(tempDir, 'SKILL.md'))).toBe(true);
+    });
+
+    it('accepts uppercase SKILL.MD (case-insensitive, aligned with getTarballTopDir)', async () => {
+      const tarball = await buildTarball([{ name: 'pptx/SKILL.MD', content: '# upper' }]);
+
+      await expect(resolver.extract(tarball, tempDir)).resolves.toBe(`${tempDir}/pptx`);
+    });
+
+    it('rejects a junk-only tarball instead of installing an empty skill (#3062)', async () => {
+      const tarball = await buildTarball([
+        { name: '._pptx', content: 'appledouble junk' },
+        { name: '__MACOSX/pptx/._.', content: 'zip metadata junk' },
+        { name: 'pptx/.DS_Store', content: 'finder junk' },
+      ]);
+
+      await expect(resolver.extract(tarball, tempDir)).rejects.toThrow(/no SKILL\.md/);
+    });
+
+    it('rejects a tarball that has real files but no SKILL.md anywhere', async () => {
+      const tarball = await buildTarball([{ name: 'pptx/README.md', content: 'readme only' }]);
+
+      await expect(resolver.extract(tarball, tempDir)).rejects.toThrow(/no SKILL\.md/);
     });
   });
 });

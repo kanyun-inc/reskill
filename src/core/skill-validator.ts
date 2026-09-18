@@ -14,6 +14,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as semver from 'semver';
 import type { SkillJson } from '../types/index.js';
+import { isMacMetadataPath, isMacMetadataSegment } from './extractor.js';
 import { type ParsedSkill, parseSkillMdFile } from './skill-parser.js';
 
 // ============================================================================
@@ -349,6 +350,13 @@ export class SkillValidator {
    * Check if a file/directory should be ignored
    */
   private shouldIgnore(name: string): boolean {
+    // macOS metadata (AppleDouble ._<name>, __MACOSX) — must not enter the
+    // files list at all so that dry-run output, size calc, integrity hash and
+    // the packed tarball all agree on the same file set (#3062). Segment-level
+    // predicate shared with the tarball filter to keep one definition.
+    if (isMacMetadataSegment(name)) {
+      return true;
+    }
     for (const pattern of SkillValidator.IGNORE_PATTERNS) {
       if (pattern.startsWith('*')) {
         // Wildcard pattern (e.g., *.log)
@@ -484,12 +492,15 @@ export class SkillValidator {
 
   /**
    * Generate integrity hash for files
+   *
+   * Metadata entries (._*, __MACOSX/, .DS_Store) are excluded so the hashed
+   * file set matches what createTarball actually packs (#3062).
    */
   generateIntegrity(skillPath: string, files: string[]): string {
     const hash = crypto.createHash('sha256');
 
     // Sort files for consistent ordering
-    const sortedFiles = [...files].sort();
+    const sortedFiles = [...files].filter((file) => !isMacMetadataPath(file)).sort();
 
     for (const file of sortedFiles) {
       const filePath = path.join(skillPath, file);

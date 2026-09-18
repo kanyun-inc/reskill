@@ -9,6 +9,47 @@ import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { createGunzip } from 'node:zlib';
 import { extract, type Headers } from 'tar-stream';
+import { logger } from '../utils/logger.js';
+
+/**
+ * Check if a single path segment is a macOS/Windows metadata artifact
+ *
+ * Segment-level predicate shared by tarball entry filtering
+ * (`isMacMetadataPath`) and directory scanning (`SkillValidator.shouldIgnore`)
+ * so "what counts as metadata" has exactly one definition (#3062 review).
+ */
+export function isMacMetadataSegment(segment: string): boolean {
+  return segment === '__MACOSX' || segment === '.DS_Store' || segment.startsWith('._');
+}
+
+/**
+ * Check if a tarball entry is a macOS/Windows metadata artifact that should be ignored
+ *
+ * Covers:
+ * - AppleDouble files (`._foo`) — created by macOS tar/zip when packing from
+ *   volumes with extended attributes; bsdtar writes `._<dir>` as the FIRST
+ *   entry before the real directory, which broke top-dir detection (#3062)
+ * - `__MACOSX/` directories — zip metadata folders created by macOS Archive
+ *   Utility / Finder compress
+ * - `.DS_Store` — Finder directory metadata
+ *
+ * @param entryName - Entry name from tarball header
+ * @returns true if the entry is metadata junk
+ *
+ * @example
+ * isMacMetadataPath('._pptx')            // true
+ * isMacMetadataPath('__MACOSX/pptx/._.') // true
+ * isMacMetadataPath('pptx/._SKILL.md')   // true
+ * isMacMetadataPath('pptx/SKILL.md')     // false
+ */
+export function isMacMetadataPath(entryName: string): boolean {
+  if (!entryName) {
+    return false;
+  }
+
+  const parts = entryName.split(/[\\/]/);
+  return parts.some(isMacMetadataSegment);
+}
 
 /**
  * Validate that a tarball entry path is safe
@@ -114,6 +155,15 @@ export async function extractTarballBuffer(tarball: Buffer, installDir: string):
 
     // Process each entry
     extractor.on('entry', (header: Headers, stream, next) => {
+      // Skip macOS/Windows metadata entries (._foo, __MACOSX/, .DS_Store).
+      // They carry no skill content and a leading ._<dir> file previously
+      // poisoned top-dir detection (#3062).
+      if (isMacMetadataPath(header.name)) {
+        stream.resume();
+        next();
+        return;
+      }
+
       // Security check: validate path is safe (prevents path traversal attacks)
       if (!isPathSafe(installDir, header.name)) {
         // Skip suspicious entries silently
@@ -189,8 +239,19 @@ export async function extractTarballBuffer(tarball: Buffer, installDir: string):
  *
  * Used to validate tarball structure or get skill name
  *
+ * Metadata entries (`._foo`, `__MACOSX/`, `.DS_Store`) are ignored: on macOS
+ * a leading `._<skill>` AppleDouble file used to be mistaken for the skill
+ * root even though it is a plain file, breaking downstream installs with
+ * ENOTDIR (#3062).
+ *
+ * Detection order:
+ * 1. The top-level directory that directly contains a `SKILL.md`
+ * 2. `null` if a flat tarball has `SKILL.md` at the root (caller should use
+ *    the extraction directory itself as the skill directory)
+ * 3. Otherwise the first path segment of the first non-metadata entry
+ *
  * @param tarball - Gzipped tarball buffer
- * @returns Top-level directory name or null if not found
+ * @returns Top-level directory name, or null if not found / flat layout
  *
  * @example
  * const skillName = await getTarballTopDir(tarball);
@@ -200,14 +261,33 @@ export async function getTarballTopDir(tarball: Buffer): Promise<string | null> 
   return new Promise((resolve, reject) => {
     const gunzip = createGunzip();
     const extractor = extract();
-    let topDir: string | null = null;
+    let firstTopDir: string | null = null;
+    let skillTopDir: string | null = null;
+    let flatSkillMd = false;
+    const skillMdCandidates = new Set<string>();
 
     extractor.on('entry', (header: Headers, stream, next) => {
-      if (!topDir && header.name) {
-        // Get top-level directory from first entry
-        const parts = header.name.split('/');
-        if (parts.length > 0 && parts[0]) {
-          topDir = parts[0];
+      if (header.name && !isMacMetadataPath(header.name)) {
+        // Split on platform separators: normalize() turns '/' into '\' on
+        // Windows, so both must be treated as separators there.
+        const separatorPattern = sep === '\\' ? /[\\/]/ : /\//;
+        const parts = normalize(header.name).split(separatorPattern).filter(Boolean);
+        const top = parts[0];
+        if (top) {
+          if (firstTopDir === null) {
+            firstTopDir = top;
+          }
+          // A SKILL.md directly inside the top dir marks the real skill root
+          if (parts.length === 2 && parts[1].toLowerCase() === 'skill.md') {
+            skillMdCandidates.add(top);
+            if (skillTopDir === null) {
+              skillTopDir = top;
+            }
+          }
+          // Flat layout: SKILL.md at tarball root means no top-level dir
+          if (parts.length === 1 && top.toLowerCase() === 'skill.md') {
+            flatSkillMd = true;
+          }
         }
       }
       stream.resume();
@@ -215,7 +295,16 @@ export async function getTarballTopDir(tarball: Buffer): Promise<string | null> 
     });
 
     extractor.on('finish', () => {
-      resolve(topDir);
+      // Registry tarballs are single-skill by contract. If several top-level
+      // directories each contain a SKILL.md, the first one wins — but that is
+      // again "tarball order decides semantics", so leave a signal instead of
+      // failing silently.
+      if (skillMdCandidates.size > 1) {
+        logger.warn(
+          `Tarball contains multiple SKILL.md roots ([${Array.from(skillMdCandidates).join(', ')}]); using the first: ${skillTopDir}`,
+        );
+      }
+      resolve(skillTopDir ?? (flatSkillMd ? null : firstTopDir));
     });
 
     extractor.on('error', (err) => {
