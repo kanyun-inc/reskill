@@ -256,6 +256,7 @@ This is the skill content.`);
   // ============================================================================
 
   describe('validate', () => {
+
     describe('SKILL.md validation (required)', () => {
       it('should pass with valid SKILL.md only', () => {
         createValidSkillMd();
@@ -679,6 +680,32 @@ version: "1.0.0"
   });
 
   // ============================================================================
+  // ============================================================================
+  // loadSkill tests
+  // ============================================================================
+
+  describe('loadSkill', () => {
+    it('excludes macOS metadata files from the scanned files list (#3062)', () => {
+      createValidSkillMd();
+      fs.writeFileSync(path.join(tempDir, '_private.md'), 'normal underscore file');
+      fs.writeFileSync(path.join(tempDir, '._SKILL.md'), 'appledouble junk');
+      fs.writeFileSync(path.join(tempDir, '.DS_Store'), 'finder junk');
+      fs.mkdirSync(path.join(tempDir, '__MACOSX'), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, '__MACOSX', '._test'), 'zip metadata junk');
+      fs.mkdirSync(path.join(tempDir, 'sub'), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, 'sub', '._nested.txt'), 'nested appledouble');
+
+      const loaded = validator.loadSkill(tempDir);
+
+      expect(loaded.files).toContain('SKILL.md');
+      expect(loaded.files).toContain('_private.md');
+      expect(loaded.files).not.toContain('._SKILL.md');
+      expect(loaded.files).not.toContain('.DS_Store');
+      expect(loaded.files.some((f) => f.startsWith('__MACOSX'))).toBe(false);
+      expect(loaded.files.some((f) => f.split('/').some((seg) => seg.startsWith('._')))).toBe(false);
+    });
+  });
+
   // generateIntegrity tests
   // ============================================================================
 
@@ -688,6 +715,24 @@ version: "1.0.0"
 
       const hash = validator.generateIntegrity(tempDir, ['skill.json']);
       expect(hash).toMatch(/^sha256-[a-f0-9]{64}$/);
+    });
+
+    it('should exclude macOS metadata files from the hash (#3062)', () => {
+      createSkillJson({ name: 'test', version: '1.0.0', description: 'test' });
+      fs.writeFileSync(path.join(tempDir, '._SKILL.md'), 'appledouble junk');
+      fs.writeFileSync(path.join(tempDir, 'junk'), 'junk');
+
+      // Hash over clean + junk list must equal hash over clean list only —
+      // the hashed file set has to match what createTarball packs
+      const clean = validator.generateIntegrity(tempDir, ['skill.json']);
+      const withJunk = validator.generateIntegrity(tempDir, [
+        'skill.json',
+        '._SKILL.md',
+        '__MACOSX/._test',
+        'pptx/.DS_Store',
+      ]);
+
+      expect(withJunk).toBe(clean);
     });
 
     it('should generate consistent hash for same content', () => {

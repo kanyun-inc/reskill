@@ -9,8 +9,14 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { pack } from 'tar-stream';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { extractTarballBuffer, getTarballTopDir, isMacMetadataPath, isPathSafe } from './extractor.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { logger } from '../utils/logger.js';
+import {
+  extractTarballBuffer,
+  getTarballTopDir,
+  isMacMetadataPath,
+  isPathSafe,
+} from './extractor.js';
 
 describe('extractor', () => {
   let tempDir: string;
@@ -439,6 +445,23 @@ describe('extractor', () => {
       ]);
 
       expect(await getTarballTopDir(tarball)).toBe('my-skill');
+    });
+
+    it('should warn when multiple top dirs contain SKILL.md (order should not decide silently)', async () => {
+      const warnSpy = vi.spyOn(logger, 'warn');
+
+      const tarball = await createMockTarballRaw([
+        { name: 'b-skill/SKILL.md', content: '# B' },
+        { name: 'a-skill/SKILL.md', content: '# A' },
+      ]);
+
+      expect(await getTarballTopDir(tarball)).toBe('b-skill');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const message = warnSpy.mock.calls[0][0];
+      expect(message).toContain('b-skill');
+      expect(message).toContain('a-skill');
+
+      warnSpy.mockRestore();
     });
 
     it('should fall back to first non-metadata entry without SKILL.md', async () => {

@@ -9,6 +9,7 @@ import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { createGunzip } from 'node:zlib';
 import { extract, type Headers } from 'tar-stream';
+import { logger } from '../utils/logger.js';
 
 /**
  * Check if a tarball entry is a macOS/Windows metadata artifact that should be ignored
@@ -257,6 +258,7 @@ export async function getTarballTopDir(tarball: Buffer): Promise<string | null> 
     let firstTopDir: string | null = null;
     let skillTopDir: string | null = null;
     let flatSkillMd = false;
+    const skillMdCandidates = new Set<string>();
 
     extractor.on('entry', (header: Headers, stream, next) => {
       if (header.name && !isMacMetadataPath(header.name)) {
@@ -271,6 +273,7 @@ export async function getTarballTopDir(tarball: Buffer): Promise<string | null> 
           }
           // A SKILL.md directly inside the top dir marks the real skill root
           if (parts.length === 2 && parts[1].toLowerCase() === 'skill.md') {
+            skillMdCandidates.add(top);
             if (skillTopDir === null) {
               skillTopDir = top;
             }
@@ -286,6 +289,15 @@ export async function getTarballTopDir(tarball: Buffer): Promise<string | null> 
     });
 
     extractor.on('finish', () => {
+      // Registry tarballs are single-skill by contract. If several top-level
+      // directories each contain a SKILL.md, the first one wins — but that is
+      // again "tarball order decides semantics", so leave a signal instead of
+      // failing silently.
+      if (skillMdCandidates.size > 1) {
+        logger.warn(
+          `Tarball contains multiple SKILL.md roots ([${Array.from(skillMdCandidates).join(', ')}]); using the first: ${skillTopDir}`,
+        );
+      }
       resolve(skillTopDir ?? (flatSkillMd ? null : firstTopDir));
     });
 
