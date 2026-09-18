@@ -10,7 +10,7 @@ import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { pack } from 'tar-stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { extractTarballBuffer, isPathSafe } from './extractor.js';
+import { extractTarballBuffer, getTarballTopDir, isMacMetadataPath, isPathSafe } from './extractor.js';
 
 describe('extractor', () => {
   let tempDir: string;
@@ -352,6 +352,117 @@ describe('extractor', () => {
       // Verify content integrity
       const content = fs.readFileSync(path.join(tempDir, 'my-skill/SKILL.md'), 'utf-8');
       expect(content).toBe('# My Skill');
+    });
+  });
+
+  // ==========================================================================
+  // macOS Metadata Filtering Tests (#3062)
+  // ==========================================================================
+
+  describe('isMacMetadataPath', () => {
+    it('detects AppleDouble files', () => {
+      expect(isMacMetadataPath('._pptx')).toBe(true);
+      expect(isMacMetadataPath('pptx/._SKILL.md')).toBe(true);
+      expect(isMacMetadataPath('pptx/scripts/._helper.py')).toBe(true);
+    });
+
+    it('detects __MACOSX directories', () => {
+      expect(isMacMetadataPath('__MACOSX/pptx/._.')).toBe(true);
+      expect(isMacMetadataPath('__MACOSX/._pptx')).toBe(true);
+    });
+
+    it('detects .DS_Store files', () => {
+      expect(isMacMetadataPath('.DS_Store')).toBe(true);
+      expect(isMacMetadataPath('pptx/.DS_Store')).toBe(true);
+    });
+
+    it('allows normal skill paths', () => {
+      expect(isMacMetadataPath('pptx/SKILL.md')).toBe(false);
+      expect(isMacMetadataPath('pptx/scripts/init.sh')).toBe(false);
+      expect(isMacMetadataPath('my-skill/file_name.txt')).toBe(false);
+      expect(isMacMetadataPath('')).toBe(false);
+    });
+  });
+
+  describe('extractTarballBuffer - macOS metadata filtering', () => {
+    it('should skip macOS metadata entries and extract real files (#3062)', async () => {
+      // Simulates a tarball packed on macOS: bsdtar writes the ._pptx
+      // AppleDouble entry for the pptx/ directory BEFORE the directory itself
+      const tarball = await createMockTarballRaw([
+        { name: '._pptx', content: 'appledouble junk' },
+        { name: 'pptx/SKILL.md', content: '# PPTX Skill' },
+        { name: 'pptx/._SKILL.md', content: 'appledouble junk' },
+        { name: 'pptx/.DS_Store', content: 'finder junk' },
+        { name: '__MACOSX/pptx/._.', content: 'zip metadata junk' },
+        { name: 'pptx/scripts/clean.py', content: '# clean' },
+      ]);
+
+      await extractTarballBuffer(tarball, tempDir);
+
+      // Real files extracted
+      expect(fs.existsSync(path.join(tempDir, 'pptx/SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, 'pptx/scripts/clean.py'))).toBe(true);
+
+      // Metadata junk NOT extracted
+      expect(fs.existsSync(path.join(tempDir, '._pptx'))).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, 'pptx/._SKILL.md'))).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, 'pptx/.DS_Store'))).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, '__MACOSX'))).toBe(false);
+    });
+  });
+
+  describe('getTarballTopDir', () => {
+    it('should return top dir for normal tarball', async () => {
+      const tarball = await createMockTarball('my-skill', [
+        { name: 'SKILL.md', content: '# My Skill' },
+      ]);
+
+      expect(await getTarballTopDir(tarball)).toBe('my-skill');
+    });
+
+    it('should ignore leading macOS metadata entries (#3062)', async () => {
+      // First entry is the ._pptx AppleDouble file, not the skill directory
+      const tarball = await createMockTarballRaw([
+        { name: '._pptx', content: 'appledouble junk' },
+        { name: '__MACOSX/._pptx', content: 'zip metadata junk' },
+        { name: 'pptx/SKILL.md', content: '# PPTX Skill' },
+        { name: 'pptx/scripts/clean.py', content: '# clean' },
+      ]);
+
+      expect(await getTarballTopDir(tarball)).toBe('pptx');
+    });
+
+    it('should prefer the top dir that contains SKILL.md', async () => {
+      const tarball = await createMockTarballRaw([
+        { name: 'docs/readme.md', content: 'docs' },
+        { name: 'my-skill/SKILL.md', content: '# Skill' },
+      ]);
+
+      expect(await getTarballTopDir(tarball)).toBe('my-skill');
+    });
+
+    it('should fall back to first non-metadata entry without SKILL.md', async () => {
+      const tarball = await createMockTarballRaw([
+        { name: '._junk', content: 'junk' },
+        { name: 'my-skill/readme.md', content: 'readme' },
+      ]);
+
+      expect(await getTarballTopDir(tarball)).toBe('my-skill');
+    });
+
+    it('should return null for flat tarball with root SKILL.md', async () => {
+      const tarball = await createMockTarballRaw([
+        { name: 'SKILL.md', content: '# Flat Skill' },
+        { name: 'examples.md', content: '# Examples' },
+      ]);
+
+      expect(await getTarballTopDir(tarball)).toBeNull();
+    });
+
+    it('should return null for empty tarball', async () => {
+      const tarball = await createEmptyTarball();
+
+      expect(await getTarballTopDir(tarball)).toBeNull();
     });
   });
 });

@@ -469,6 +469,21 @@ describe('RegistryClient', () => {
       expect(tarball.length).toBeGreaterThan(0);
     });
 
+    it('should exclude macOS metadata files from tarball (#3062)', async () => {
+      fs.writeFileSync(path.join(tempDir, 'SKILL.md'), '# Test Skill');
+      fs.writeFileSync(path.join(tempDir, '._SKILL.md'), 'appledouble junk');
+      fs.writeFileSync(path.join(tempDir, '.DS_Store'), 'finder junk');
+
+      const tarball = await client.createTarball(
+        tempDir,
+        ['SKILL.md', '._SKILL.md', '.DS_Store', '__MACOSX/._test'],
+        'test-skill',
+      );
+
+      const entries = await extractTarballEntries(tarball);
+      expect(entries).toEqual(['test-skill/SKILL.md']);
+    });
+
     // ========================================================================
     // shortName parameter tests (Step 2.4)
     // ========================================================================
