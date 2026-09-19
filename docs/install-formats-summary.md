@@ -353,7 +353,7 @@ reskill install <skill> [options]
   -a, --agent <agents>  指定目标 agent（如 cursor, claude-code）
   --mode <mode>         安装模式：symlink 或 copy
   -y, --yes             跳过确认提示
-  --all                 安装到所有 agent
+  --all                 安装到所有检测到的 agent
 ```
 
 ---

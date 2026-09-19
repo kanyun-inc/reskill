@@ -72,7 +72,7 @@ npx reskill@latest <command>  # Or use npx directly
 | `-a, --agent <agents...>` | `install`                                                     | Specify target agents (e.g., `cursor`, `claude-code`)         |
 | `-a, --agent <agent>`     | `list`                                                        | List skills installed to a specific agent                     |
 | `--mode <mode>`           | `install`                                                     | Installation mode: `symlink` (default) or `copy`              |
-| `--all`                   | `install`                                                     | Install to all agents                                          |
+| `--all`                   | `install`                                                     | Install to all detected agents                                 |
 | `-y, --yes`               | `install`, `uninstall`, `publish`                             | Skip confirmation prompts                                      |
 | `-f, --force`             | `install`                                                     | Force reinstall even if already installed                      |
 | `-s, --skill <names...>`  | `install`                                                     | Select specific skill(s) by name from a multi-skill repo      |

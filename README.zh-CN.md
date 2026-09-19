@@ -72,7 +72,7 @@ npx reskill@latest <command>  # 或直接使用 npx
 | `-a, --agent <agents...>` | `install`                                                     | 指定目标 Agent（如 `cursor`, `claude-code`） |
 | `-a, --agent <agent>`     | `list`                                                        | 列出安装到指定 Agent 的技能                  |
 | `--mode <mode>`           | `install`                                                     | 安装模式：`symlink`（默认）或 `copy`         |
-| `--all`                   | `install`                                                     | 安装到所有 Agent                             |
+| `--all`                   | `install`                                                     | 安装到所有检测到的 Agent                     |
 | `-y, --yes`               | `install`, `uninstall`, `publish`                             | 跳过确认提示                                 |
 | `-f, --force`             | `install`                                                     | 强制重新安装                                 |
 | `-s, --skill <names...>`  | `install`                                                     | 从多 skill 仓库中选择指定 skill              |
