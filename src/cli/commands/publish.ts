@@ -19,6 +19,7 @@ import {
   type PublishPayload,
 } from '../../core/publisher.js';
 import { RegistryClient, RegistryError } from '../../core/registry-client.js';
+import { resolveSkillMdVersion } from '../../core/skill-parser.js';
 import {
   type LoadedSkill,
   SkillValidator,
@@ -393,13 +394,10 @@ export interface VersionInputResult {
 }
 
 /**
- * Resolve the version declared in SKILL.md
- *
- * Mirrors SkillValidator.synthesizeSkillJson: top-level `version` wins,
- * then `metadata.version`. Returns undefined when neither is set.
+ * Resolve the version declared in SKILL.md, using the same rule as the publish payload
  */
 export function resolveSkillVersion(skill: Pick<LoadedSkill, 'skillMd'>): string | undefined {
-  return skill.skillMd?.version || (skill.skillMd?.metadata?.version as string | undefined);
+  return resolveSkillMdVersion(skill.skillMd);
 }
 
 /**

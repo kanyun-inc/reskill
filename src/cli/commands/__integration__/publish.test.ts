@@ -286,6 +286,23 @@ metadata:
       expect(output).not.toContain('No version specified');
     });
 
+    it('should report a validation error instead of crashing on numeric metadata.version', () => {
+      createSkillMd(`---
+name: my-skill
+description: Test skill
+metadata:
+  version: 2
+---
+# Content`);
+
+      const result = runCli(`publish --dry-run --registry ${TEST_REGISTRY}`, tempDir);
+      const output = getOutput(result);
+
+      expect(result.exitCode).toBe(1);
+      expect(output).toContain('Invalid version format: "2"');
+      expect(output).not.toContain('TypeError');
+    });
+
     it('should prefer top-level version over metadata.version in display', () => {
       createSkillMd(`---
 name: my-skill
