@@ -61,6 +61,7 @@ import {
   filterSkillsByName,
   type ParsedSkillWithPath,
   parseSkillFromDir,
+  resolveSkillMdVersion,
 } from './skill-parser.js';
 
 /**
@@ -367,7 +368,7 @@ export class SkillManager {
       if (skill?.name) {
         return {
           name: skill.name,
-          version: skill.version,
+          version: resolveSkillMdVersion(skill),
           description: skill.description,
         };
       }
@@ -1590,7 +1591,7 @@ export class SkillManager {
     const skillSource = `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? `/${parsed.subPath}` : ''}`;
 
     for (const skillInfo of selected) {
-      const semanticVersion = skillInfo.version ?? gitRef;
+      const semanticVersion = resolveSkillMdVersion(skillInfo) ?? gitRef;
 
       // Skip already-installed skills unless --force is set
       if (!force) {
