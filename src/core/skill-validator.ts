@@ -15,7 +15,7 @@ import * as path from 'node:path';
 import * as semver from 'semver';
 import type { SkillJson } from '../types/index.js';
 import { isMacMetadataPath, isMacMetadataSegment } from './extractor.js';
-import { type ParsedSkill, parseSkillMdFile } from './skill-parser.js';
+import { type ParsedSkill, parseSkillMdFile, resolveSkillMdVersion } from './skill-parser.js';
 
 // ============================================================================
 // Types
@@ -267,8 +267,7 @@ export class SkillValidator {
    * with the publish API. All metadata comes from SKILL.md.
    */
   private synthesizeSkillJson(skillMd: ParsedSkill): SkillJson {
-    // Extract version: first from top-level frontmatter, then from metadata, then default
-    const version = skillMd.version || (skillMd.metadata?.version as string) || DEFAULT_VERSION;
+    const version = resolveSkillMdVersion(skillMd) || DEFAULT_VERSION;
     // Only include keywords if it's a valid array
     const keywords = Array.isArray(skillMd.metadata?.keywords)
       ? (skillMd.metadata.keywords as string[])
@@ -452,7 +451,7 @@ export class SkillValidator {
     errors.push(...descResult.errors);
 
     // Check version in SKILL.md
-    const skillMdVersion = skillMd.version || (skillMd.metadata?.version as string | undefined);
+    const skillMdVersion = resolveSkillMdVersion(skillMd);
     if (!skillMdVersion) {
       warnings.push({
         field: 'version',

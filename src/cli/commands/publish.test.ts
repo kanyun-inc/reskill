@@ -5,6 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { LoadedSkill } from '../../core/skill-validator.js';
 import { getScopeForRegistry } from '../../utils/registry-scope.js';
 import {
   buildPublishSkillName,
@@ -13,6 +14,7 @@ import {
   parseConfirmAnswer,
   parseVersionInput,
   publishCommand,
+  resolveSkillVersion,
 } from './publish.js';
 
 describe('publish command', () => {
@@ -334,6 +336,41 @@ describe('publish command', () => {
         expect(result.valid).toBe(false);
         expect(result.error).toBeDefined();
       });
+    });
+  });
+
+  // ============================================================================
+  // resolveSkillVersion tests
+  // ============================================================================
+
+  describe('resolveSkillVersion', () => {
+    const skillWith = (frontmatter: Record<string, unknown>): Pick<LoadedSkill, 'skillMd'> => ({
+      skillMd: {
+        name: 'my-skill',
+        description: 'desc',
+        content: '',
+        rawContent: '',
+        ...frontmatter,
+      },
+    });
+
+    it('should return top-level version', () => {
+      expect(resolveSkillVersion(skillWith({ version: '2.0.0' }))).toBe('2.0.0');
+    });
+
+    it('should fall back to metadata.version', () => {
+      expect(resolveSkillVersion(skillWith({ metadata: { version: '1.2.3' } }))).toBe('1.2.3');
+    });
+
+    it('should prefer top-level version over metadata.version', () => {
+      expect(
+        resolveSkillVersion(skillWith({ version: '2.0.0', metadata: { version: '1.2.3' } })),
+      ).toBe('2.0.0');
+    });
+
+    it('should return undefined when no version is specified', () => {
+      expect(resolveSkillVersion(skillWith({}))).toBeUndefined();
+      expect(resolveSkillVersion({ skillMd: null })).toBeUndefined();
     });
   });
 

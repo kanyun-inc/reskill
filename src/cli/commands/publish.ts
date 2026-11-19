@@ -19,6 +19,7 @@ import {
   type PublishPayload,
 } from '../../core/publisher.js';
 import { RegistryClient, RegistryError } from '../../core/registry-client.js';
+import { resolveSkillMdVersion } from '../../core/skill-parser.js';
 import {
   type LoadedSkill,
   SkillValidator,
@@ -191,7 +192,8 @@ function displayValidation(skill: LoadedSkill, validation: ValidationResult): vo
 
   if (validation.valid && skill.skillMd) {
     // All metadata from SKILL.md
-    const { name, version, description } = skill.skillMd;
+    const { name, description } = skill.skillMd;
+    const version = resolveSkillVersion(skill);
 
     if (name) {
       logger.log(`  ✓ Name: ${name}`);
@@ -392,6 +394,13 @@ export interface VersionInputResult {
 }
 
 /**
+ * Resolve the version declared in SKILL.md, using the same rule as the publish payload
+ */
+export function resolveSkillVersion(skill: Pick<LoadedSkill, 'skillMd'>): string | undefined {
+  return resolveSkillMdVersion(skill.skillMd);
+}
+
+/**
  * Parse version input from user
  *
  * @param input - User input string
@@ -543,9 +552,7 @@ async function publishAction(skillPath: string, options: PublishOptions): Promis
 
     // 2.5. Check version - prompt if missing and not in --yes/--dry-run mode
     let userProvidedVersion = false;
-    const skillMdVersion =
-      skill.skillMd?.version || (skill.skillMd?.metadata?.version as string | undefined);
-    if (!skillMdVersion && skill.skillMd) {
+    if (!resolveSkillVersion(skill) && skill.skillMd) {
       if (options.yes || options.dryRun) {
         // In --yes or --dry-run mode, continue with warning (handled by validator)
         // Skip interactive prompt for non-interactive modes
@@ -617,7 +624,7 @@ async function publishAction(skillPath: string, options: PublishOptions): Promis
     // 7. Display preview
     // All metadata from SKILL.md
     const displayName = skill.skillMd?.name || 'unknown';
-    const displayVersion = skill.skillMd?.version || '0.0.0';
+    const displayVersion = resolveSkillVersion(skill) || '0.0.0';
 
     logger.newline();
     if (options.dryRun) {
@@ -662,7 +669,7 @@ async function publishAction(skillPath: string, options: PublishOptions): Promis
     // 9. Confirm publish
     if (!options.yes && skill.skillMd) {
       const confirmName = skill.skillMd.name;
-      const confirmVersion = skill.skillMd.version || '0.0.0';
+      const confirmVersion = resolveSkillVersion(skill) || '0.0.0';
       const confirmed = await confirmPublish(confirmName, confirmVersion, registry);
       if (!confirmed) {
         logger.log('Cancelled.');

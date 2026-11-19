@@ -7,6 +7,7 @@ import {
   filterSkillsByName,
   parseSkillFromDir,
   parseSkillMd,
+  resolveSkillMdVersion,
   SkillValidationError,
   validateSkillDescription,
   validateSkillName,
@@ -352,6 +353,36 @@ Content.
       expect(result).not.toBeNull();
       // Top-level version should take precedence
       expect(result?.version).toBe('2.0.0');
+    });
+  });
+
+  describe('resolveSkillMdVersion', () => {
+    const base = { name: 'my-skill', description: 'desc', content: '', rawContent: '' };
+
+    it('should prefer top-level version over metadata.version', () => {
+      expect(
+        resolveSkillMdVersion({ ...base, version: '2.0.0', metadata: { version: '1.0.0' } }),
+      ).toBe('2.0.0');
+    });
+
+    it('should fall back to metadata.version', () => {
+      expect(resolveSkillMdVersion({ ...base, metadata: { version: '1.2.3' } })).toBe('1.2.3');
+    });
+
+    it('should stringify a numeric metadata.version', () => {
+      const skillMd = parseSkillMd(`---
+name: my-skill
+description: A test skill
+metadata:
+  version: 2
+---
+`);
+      expect(resolveSkillMdVersion(skillMd)).toBe('2');
+    });
+
+    it('should return undefined when no version is declared', () => {
+      expect(resolveSkillMdVersion(base)).toBeUndefined();
+      expect(resolveSkillMdVersion(null)).toBeUndefined();
     });
   });
 

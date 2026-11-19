@@ -370,6 +370,20 @@ export function parseSkillMd(
 }
 
 /**
+ * Resolve the version declared in SKILL.md frontmatter.
+ *
+ * Top-level `version` wins, then `metadata.version`. `metadata` is passed
+ * through unparsed, so a YAML number there (`version: 2`) is stringified here.
+ */
+export function resolveSkillMdVersion(
+  skillMd: Pick<ParsedSkill, 'version' | 'metadata'> | null | undefined,
+): string | undefined {
+  if (skillMd?.version) return skillMd.version;
+  const metadataVersion = skillMd?.metadata?.version;
+  return metadataVersion ? String(metadataVersion) : undefined;
+}
+
+/**
  * Parse SKILL.md from file path
  */
 export function parseSkillMdFile(

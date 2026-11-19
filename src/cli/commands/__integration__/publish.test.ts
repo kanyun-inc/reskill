@@ -266,6 +266,61 @@ version: 2.5.0
       expect(result.exitCode).toBe(0);
       expect(getOutput(result)).toContain('2.5.0');
     });
+
+    it('should display metadata.version when top-level version is absent', () => {
+      createSkillMd(`---
+name: my-skill
+description: Test skill
+metadata:
+  version: "1.2.3"
+---
+# Content`);
+
+      const result = runCli(`publish --dry-run --registry ${TEST_REGISTRY}`, tempDir);
+      const output = getOutput(result);
+
+      expect(result.exitCode).toBe(0);
+      expect(output).toContain('Dry run: my-skill@1.2.3');
+      expect(output).toContain('✓ Version: 1.2.3');
+      expect(output).not.toContain('0.0.0');
+      expect(output).not.toContain('No version specified');
+    });
+
+    it('should report a validation error instead of crashing on numeric metadata.version', () => {
+      createSkillMd(`---
+name: my-skill
+description: Test skill
+metadata:
+  version: 2
+---
+# Content`);
+
+      const result = runCli(`publish --dry-run --registry ${TEST_REGISTRY}`, tempDir);
+      const output = getOutput(result);
+
+      expect(result.exitCode).toBe(1);
+      expect(output).toContain('Invalid version format: "2"');
+      expect(output).not.toContain('TypeError');
+    });
+
+    it('should prefer top-level version over metadata.version in display', () => {
+      createSkillMd(`---
+name: my-skill
+description: Test skill
+version: 2.0.0
+metadata:
+  version: "1.2.3"
+---
+# Content`);
+
+      const result = runCli(`publish --dry-run --registry ${TEST_REGISTRY}`, tempDir);
+      const output = getOutput(result);
+
+      expect(result.exitCode).toBe(0);
+      expect(output).toContain('Dry run: my-skill@2.0.0');
+      expect(output).toContain('✓ Version: 2.0.0');
+      expect(output).not.toContain('1.2.3');
+    });
   });
 
   // ============================================================================
