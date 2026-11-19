@@ -4,6 +4,7 @@
  * Tests: --version, --help, init, list, info, outdated
  */
 
+import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -413,6 +414,69 @@ describe('CLI Integration: outdated', () => {
     const { exitCode } = runCli('outdated', tempDir);
     // Should run without error (may fail to fetch from GitHub)
     expect(exitCode).toBeLessThanOrEqual(1);
+  });
+});
+
+// ============================================================================
+// metadata.version Tests
+// ============================================================================
+
+describe('CLI Integration: SKILL.md metadata.version', () => {
+  let tempDir: string;
+
+  const metadataOnlySkillMd = (name: string) => `---
+name: ${name}
+description: A skill that declares its version under metadata
+metadata:
+  version: "1.2.3"
+---
+
+# ${name}
+`;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+    runCli('init -y', tempDir);
+  });
+
+  afterEach(() => {
+    removeTempDir(tempDir);
+  });
+
+  it('should show metadata.version in list and info for a skill without a lock entry', () => {
+    const skillDir = path.join(tempDir, '.agents', 'skills', 'my-skill');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), metadataOnlySkillMd('my-skill'));
+
+    const list = runCli('list', tempDir);
+    expect(list.exitCode).toBe(0);
+    expect(list.stdout).toMatch(/my-skill\s+1\.2\.3/);
+    expect(list.stdout).not.toContain('unknown');
+
+    const info = runCli('info my-skill', tempDir);
+    expect(info.exitCode).toBe(0);
+    expect(info.stdout).toContain('Version: 1.2.3');
+  });
+
+  it('should lock metadata.version when installing from git', () => {
+    const repoDir = path.join(tempDir, 'metadata-skill-repo');
+    fs.mkdirSync(repoDir, { recursive: true });
+    fs.writeFileSync(path.join(repoDir, 'SKILL.md'), metadataOnlySkillMd('metadata-skill'));
+    execSync('git init -b main', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git config user.name "Test User"', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git add -A', { cwd: repoDir, stdio: 'pipe' });
+    execSync('git commit -m "init"', { cwd: repoDir, stdio: 'pipe' });
+
+    const install = runCli(`install file://${repoDir} -a cursor -y`, tempDir);
+    expect(install.exitCode).toBe(0);
+
+    const lock = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.lock'), 'utf-8'));
+    expect(lock.skills['metadata-skill'].version).toBe('1.2.3');
+    expect(lock.skills['metadata-skill'].ref).toBe('main');
+
+    const list = runCli('list', tempDir);
+    expect(list.stdout).toMatch(/metadata-skill\s+1\.2\.3/);
   });
 });
 

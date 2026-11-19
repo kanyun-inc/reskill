@@ -61,6 +61,7 @@ import {
   filterSkillsByName,
   type ParsedSkillWithPath,
   parseSkillFromDir,
+  resolveSkillMdVersion,
 } from './skill-parser.js';
 
 /**
@@ -367,7 +368,7 @@ export class SkillManager {
       if (skill?.name) {
         return {
           name: skill.name,
-          version: skill.version,
+          version: resolveSkillMdVersion(skill),
           description: skill.description,
         };
       }
@@ -1590,7 +1591,7 @@ export class SkillManager {
     const skillSource = `${parsed.registry}:${parsed.owner}/${parsed.repo}${parsed.subPath ? `/${parsed.subPath}` : ''}`;
 
     for (const skillInfo of selected) {
-      const semanticVersion = skillInfo.version ?? gitRef;
+      const semanticVersion = resolveSkillMdVersion(skillInfo) ?? gitRef;
 
       // Skip already-installed skills unless --force is set
       if (!force) {
@@ -2325,7 +2326,9 @@ export class SkillManager {
       // Get metadata from extracted path
       const metadata = this.getSkillMetadataFromDir(extractedPath);
       const skillName = metadata?.name ?? shortName;
-      const semanticVersion = metadata?.version ?? version;
+      // The registry-resolved version is authoritative: the tarball's SKILL.md can
+      // lag behind it, e.g. after a republish that did not bump the frontmatter.
+      const semanticVersion = version;
 
       // Update lock file (project mode only, skip for effectively-global installs)
       const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);

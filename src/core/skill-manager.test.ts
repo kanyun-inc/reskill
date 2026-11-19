@@ -490,7 +490,7 @@ description: Test skill
     let repoDir: string;
 
     function createLocalMultiSkillRepo(
-      skills: Array<{ name: string; description: string }>,
+      skills: Array<{ name: string; description: string; extraFrontmatter?: string }>,
     ): string {
       const repoPath = path.join(repoDir, 'skills-repo');
       fs.mkdirSync(repoPath, { recursive: true });
@@ -505,7 +505,7 @@ description: Test skill
           `---
 name: ${s.name}
 description: ${s.description}
----
+${s.extraFrontmatter ?? ''}---
 # ${s.name}
 `,
         );
@@ -574,6 +574,25 @@ description: ${s.description}
 
       const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.json'), 'utf-8'));
       expect(config.skills.pdf).toMatch(/#pdf$/);
+    });
+
+    it('should lock metadata.version as the semantic version of a discovered skill', async () => {
+      const fileUrl = createLocalMultiSkillRepo([
+        {
+          name: 'pdf',
+          description: 'PDF skill',
+          extraFrontmatter: 'metadata:\n  version: "1.2.3"\n',
+        },
+      ]);
+
+      const result = await skillManager.installSkillsFromRepo(fileUrl, ['pdf'], ['cursor'], {
+        save: true,
+      });
+      if (result.listOnly) throw new Error('unexpected listOnly');
+
+      const lock = JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.lock'), 'utf-8'));
+      expect(lock.skills.pdf.version).toBe('1.2.3');
+      expect(lock.skills.pdf.ref).toBe('main');
     });
 
     it('should throw when no skills match and list available', async () => {
@@ -1385,6 +1404,49 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
       await manager.installToAgents('@kanyun/github-skill@latest', ['cursor']);
 
       expect(installFromGitSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('local source_type lock version', () => {
+    async function installLocalSkill(skillMd: string, registryVersion: string) {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/local-skill',
+        source_type: 'local',
+        source_url: 'local/@kanyun/local-skill.tgz',
+      });
+      vi.spyOn(RegistryClient.prototype, 'resolveVersion').mockResolvedValue(registryVersion);
+      vi.spyOn(RegistryClient.prototype, 'downloadSkill').mockResolvedValue({
+        tarball: Buffer.from('mock tarball'),
+        integrity: 'sha256-mockhash',
+      });
+
+      const mockSkillDir = path.join(tempDir, 'mock-local-skill');
+      fs.mkdirSync(mockSkillDir, { recursive: true });
+      fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), skillMd);
+      const registryResolver = (manager as unknown as { registryResolver: RegistryResolver })
+        .registryResolver;
+      vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
+
+      await manager.installToAgents(`@kanyun/local-skill@${registryVersion}`, ['cursor']);
+      return JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.lock'), 'utf-8'));
+    }
+
+    it('should lock the registry-resolved version over metadata.version', async () => {
+      const lock = await installLocalSkill(
+        '---\nname: local-skill\ndescription: d\nmetadata:\n  version: "1.0.0"\n---\n# Skill\n',
+        '1.0.1',
+      );
+      expect(lock.skills['local-skill'].version).toBe('1.0.1');
+      expect(lock.skills['local-skill'].ref).toBe('1.0.1');
+    });
+
+    it('should lock the registry-resolved version over top-level version', async () => {
+      const lock = await installLocalSkill(
+        '---\nname: local-skill\ndescription: d\nversion: 1.0.0\n---\n# Skill\n',
+        '1.0.1',
+      );
+      expect(lock.skills['local-skill'].version).toBe('1.0.1');
     });
   });
 
@@ -2680,6 +2742,68 @@ description: A registry skill without a version header
       // so this fell all the way through to 'unknown' even though the real installed version
       // was known and recorded on disk.
       expect(skill?.version).toBe('1.0.1');
+    });
+
+    it('should fall back to metadata.version when SKILL.md has no top-level version', () => {
+      const skillPath = path.join(tempDir, '.agents', 'skills', 'metadata-skill');
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(skillPath, 'SKILL.md'),
+        `---
+name: metadata-skill
+description: A skill that declares its version under metadata
+metadata:
+  version: "1.2.3"
+---
+
+# Metadata Skill
+`,
+      );
+
+      const skill = skillManager.getInstalledSkill('metadata-skill');
+      expect(skill).not.toBeNull();
+      expect(skill?.version).toBe('1.2.3');
+    });
+
+    it('should stringify a numeric metadata.version', () => {
+      const skillPath = path.join(tempDir, '.agents', 'skills', 'numeric-skill');
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(skillPath, 'SKILL.md'),
+        `---
+name: numeric-skill
+description: A skill with a numeric metadata version
+metadata:
+  version: 2
+---
+
+# Numeric Skill
+`,
+      );
+
+      const skill = skillManager.getInstalledSkill('numeric-skill');
+      expect(skill?.version).toBe('2');
+    });
+
+    it('should prefer top-level version over metadata.version', () => {
+      const skillPath = path.join(tempDir, '.agents', 'skills', 'both-skill');
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(skillPath, 'SKILL.md'),
+        `---
+name: both-skill
+description: A skill declaring both versions
+version: 3.0.0
+metadata:
+  version: "1.2.3"
+---
+
+# Both Skill
+`,
+      );
+
+      const skill = skillManager.getInstalledSkill('both-skill');
+      expect(skill?.version).toBe('3.0.0');
     });
   });
 
