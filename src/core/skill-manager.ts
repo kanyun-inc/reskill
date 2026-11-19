@@ -2326,7 +2326,9 @@ export class SkillManager {
       // Get metadata from extracted path
       const metadata = this.getSkillMetadataFromDir(extractedPath);
       const skillName = metadata?.name ?? shortName;
-      const semanticVersion = metadata?.version ?? version;
+      // The registry-resolved version is authoritative: the tarball's SKILL.md can
+      // lag behind it, e.g. after a republish that did not bump the frontmatter.
+      const semanticVersion = version;
 
       // Update lock file (project mode only, skip for effectively-global installs)
       const effectivelyGlobal = this.isEffectivelyGlobal(targetAgents);

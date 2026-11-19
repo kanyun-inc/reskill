@@ -378,7 +378,7 @@ export function parseSkillMd(
 export function resolveSkillMdVersion(
   skillMd: Pick<ParsedSkill, 'version' | 'metadata'> | null | undefined,
 ): string | undefined {
-  if (skillMd?.version) return skillMd.version;
+  if (skillMd?.version) return String(skillMd.version);
   const metadataVersion = skillMd?.metadata?.version;
   return metadataVersion ? String(metadataVersion) : undefined;
 }

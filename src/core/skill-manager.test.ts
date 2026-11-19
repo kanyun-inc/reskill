@@ -1407,6 +1407,49 @@ describe('SkillManager installToAgentsFromRegistry with source_type', () => {
     });
   });
 
+  describe('local source_type lock version', () => {
+    async function installLocalSkill(skillMd: string, registryVersion: string) {
+      const { RegistryClient } = await import('./registry-client.js');
+      vi.spyOn(RegistryClient.prototype, 'getSkillInfo').mockResolvedValue({
+        name: '@kanyun/local-skill',
+        source_type: 'local',
+        source_url: 'local/@kanyun/local-skill.tgz',
+      });
+      vi.spyOn(RegistryClient.prototype, 'resolveVersion').mockResolvedValue(registryVersion);
+      vi.spyOn(RegistryClient.prototype, 'downloadSkill').mockResolvedValue({
+        tarball: Buffer.from('mock tarball'),
+        integrity: 'sha256-mockhash',
+      });
+
+      const mockSkillDir = path.join(tempDir, 'mock-local-skill');
+      fs.mkdirSync(mockSkillDir, { recursive: true });
+      fs.writeFileSync(path.join(mockSkillDir, 'SKILL.md'), skillMd);
+      const registryResolver = (manager as unknown as { registryResolver: RegistryResolver })
+        .registryResolver;
+      vi.spyOn(registryResolver, 'extract').mockResolvedValue(mockSkillDir);
+
+      await manager.installToAgents(`@kanyun/local-skill@${registryVersion}`, ['cursor']);
+      return JSON.parse(fs.readFileSync(path.join(tempDir, 'skills.lock'), 'utf-8'));
+    }
+
+    it('should lock the registry-resolved version over metadata.version', async () => {
+      const lock = await installLocalSkill(
+        '---\nname: local-skill\ndescription: d\nmetadata:\n  version: "1.0.0"\n---\n# Skill\n',
+        '1.0.1',
+      );
+      expect(lock.skills['local-skill'].version).toBe('1.0.1');
+      expect(lock.skills['local-skill'].ref).toBe('1.0.1');
+    });
+
+    it('should lock the registry-resolved version over top-level version', async () => {
+      const lock = await installLocalSkill(
+        '---\nname: local-skill\ndescription: d\nversion: 1.0.0\n---\n# Skill\n',
+        '1.0.1',
+      );
+      expect(lock.skills['local-skill'].version).toBe('1.0.1');
+    });
+  });
+
   describe('source_type 分支', () => {
     it('should call installToAgentsFromGit for github source_type', async () => {
       const { RegistryClient } = await import('./registry-client.js');
